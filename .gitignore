@@ -1,0 +1,24 @@
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+.env*.local
+
+# Node / frontend
+node_modules/
+.next/
+out/
+
+# Java / backend
+target/
