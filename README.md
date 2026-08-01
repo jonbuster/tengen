@@ -1,4 +1,4 @@
-# Tengen — Event Processor & Admin Console
+# Tengen — Complex Event Processor & Admin Console
 
 Rule-based event processing with a **Spring Boot 4 (Java 21)** API and a **Next.js 15 + MUI 6** admin SPA.
 
