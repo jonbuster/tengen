@@ -21,7 +21,7 @@ async function handle(
     const refreshed = await refreshAccessToken(refreshToken);
     if (refreshed) {
       res = await forward(req, path, refreshed.accessToken, body);
-      const cookieRes = new NextResponse(res.body, { status: res.status, headers: res.headers });
+      const cookieRes = new NextResponse(res.body, { status: res.status });
       cookieRes.cookies.set("access_token", refreshed.accessToken, {
         httpOnly: true,
         sameSite: "lax",
@@ -57,9 +57,16 @@ async function forward(
   });
 
   const text = await upstream.text();
+  const responseHeaders: Record<string, string> = {};
+  // Only advertise JSON when there is a body. Empty responses (e.g. 204 on
+  // delete) must not carry a JSON content-type, otherwise axios tries to
+  // parse an empty payload and reports a client-side 500.
+  if (text.length > 0) {
+    responseHeaders["Content-Type"] = "application/json";
+  }
   return new NextResponse(text, {
     status: upstream.status,
-    headers: { "Content-Type": "application/json" },
+    headers: responseHeaders,
   });
 }
 

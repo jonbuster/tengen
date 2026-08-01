@@ -8,9 +8,18 @@ import {
   Grid,
   MenuItem,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from "@mui/material";
 import { useState } from "react";
+import { ConditionBuilder } from "@/components/ConditionBuilder";
+import {
+  ConditionGroup,
+  createGroup,
+  generateAviator,
+  parseAviator,
+} from "@/lib/conditionBuilder";
 import { Rule, RuleAction, RuleRequest, RuleType } from "@/lib/types";
 
 const RULE_TYPES: RuleType[] = ["CONDITION", "AGGREGATE"];
@@ -23,7 +32,12 @@ interface RuleFormProps {
   submitting?: boolean;
 }
 
-function toRequest(initial: Rule | undefined, values: Record<string, string>): RuleRequest {
+function toRequest(
+  initial: Rule | undefined,
+  values: Record<string, string>,
+  condition: ConditionGroup,
+  conditionMode: "builder" | "raw",
+): RuleRequest {
   const ruleType = values.ruleType as RuleType;
   const action = values.action as RuleAction;
   return {
@@ -33,7 +47,8 @@ function toRequest(initial: Rule | undefined, values: Record<string, string>): R
     callbackUrl: action === "WEBHOOK" ? values.callbackUrl || null : null,
     eventType: values.eventType,
     source: values.source,
-    conditionScript: values.conditionScript,
+    conditionScript:
+      conditionMode === "builder" ? generateAviator(condition) : values.conditionScript.trim(),
     windowSeconds: values.windowSeconds ? Number(values.windowSeconds) : null,
     aggType: ruleType === "AGGREGATE" ? (values.aggType as RuleRequest["aggType"]) : null,
     aggField: ruleType === "AGGREGATE" ? values.aggField || null : null,
@@ -57,6 +72,16 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
     threshold: initial?.threshold?.toString() ?? "0",
     active: String(initial?.active ?? true),
   }));
+  const [condition, setCondition] = useState<ConditionGroup>(() => {
+    if (initial?.conditionScript) {
+      return parseAviator(initial.conditionScript) ?? createGroup("AND");
+    }
+    return createGroup("AND");
+  });
+  const [conditionMode, setConditionMode] = useState<"builder" | "raw">(() => {
+    if (!initial?.conditionScript) return "builder";
+    return parseAviator(initial.conditionScript) ? "builder" : "raw";
+  });
   const [error, setError] = useState<string | null>(null);
 
   const set = (key: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -65,8 +90,12 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (conditionMode === "builder" && !generateAviator(condition).trim()) {
+      setError("Add at least one condition in the visual builder.");
+      return;
+    }
     try {
-      await onSubmit(toRequest(initial, values));
+      await onSubmit(toRequest(initial, values, condition, conditionMode));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save rule");
     }
@@ -140,16 +169,32 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
       )}
 
       <Typography variant="subtitle1">Condition</Typography>
-      <TextField
-        label="Condition Script (Aviator)"
-        value={values.conditionScript}
-        onChange={set("conditionScript")}
-        fullWidth
-        multiline
-        minRows={4}
-        required
-        helperText="e.g. data.amount >= 1000 && data.country == 'PH'"
-      />
+      <ToggleButtonGroup
+        size="small"
+        exclusive
+        value={conditionMode}
+        onChange={(_, mode) => {
+          if (mode) setConditionMode(mode);
+        }}
+        sx={{ mb: 1 }}
+      >
+        <ToggleButton value="builder">Visual Builder</ToggleButton>
+        <ToggleButton value="raw">Raw Aviator</ToggleButton>
+      </ToggleButtonGroup>
+      {conditionMode === "builder" ? (
+        <ConditionBuilder root={condition} onChange={setCondition} />
+      ) : (
+        <TextField
+          label="Condition Script (Aviator)"
+          value={values.conditionScript}
+          onChange={set("conditionScript")}
+          fullWidth
+          multiline
+          minRows={4}
+          required
+          helperText="e.g. data.amount >= 1000 && data.country == 'PH'"
+        />
+      )}
 
       <FormControlLabel
         control={

@@ -7,9 +7,13 @@ import {
   List,
   ListItem,
   ListItemButton,
+  ListItemIcon,
   ListItemText,
   Typography,
 } from "@mui/material";
+import KeyIcon from "@mui/icons-material/Key";
+import RuleIcon from "@mui/icons-material/Rule";
+import ScienceIcon from "@mui/icons-material/Science";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
@@ -17,9 +21,9 @@ import { useAuth } from "@/lib/auth";
 const DRAWER_WIDTH = 240;
 
 const NAV_ITEMS = [
-  { href: "/rules", label: "Rules" },
-  { href: "/rules/test", label: "Run Test" },
-  { href: "/keys", label: "API Keys" },
+  { href: "/rules", label: "Rules", icon: <RuleIcon /> },
+  { href: "/rules/test", label: "Run Test", icon: <ScienceIcon /> },
+  { href: "/keys", label: "API Keys", icon: <KeyIcon /> },
 ];
 
 export function NavBar() {
@@ -72,6 +76,9 @@ export function NavBar() {
                     "&:hover": { backgroundColor: "rgba(255,255,255,0.08)" },
                   }}
                 >
+                  <ListItemIcon sx={{ color: "inherit", minWidth: 36 }}>
+                    {item.icon}
+                  </ListItemIcon>
                   <ListItemText primary={item.label} />
                 </ListItemButton>
               </ListItem>

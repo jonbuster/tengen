@@ -1,6 +1,7 @@
 "use client";
 
-import { Box, CssBaseline, ThemeProvider } from "@mui/material";
+import { Box, Container, CssBaseline, Paper, ThemeProvider } from "@mui/material";
+import { usePathname } from "next/navigation";
 import theme from "@/theme";
 import { Providers } from "./providers";
 import { NavBar } from "@/components/NavBar";
@@ -8,6 +9,9 @@ import { AuthProvider } from "@/lib/auth";
 import "./globals.css";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const isLogin = pathname === "/login";
+
   return (
     <html lang="en">
       <body>
@@ -18,7 +22,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Box sx={{ display: "flex", minHeight: "100vh" }}>
                 <NavBar />
                 <Box component="main" sx={{ flexGrow: 1, bgcolor: "background.default" }}>
-                  {children}
+                  {isLogin ? (
+                    children
+                  ) : (
+                    <Container maxWidth="lg" sx={{ py: 4 }}>
+                      <Paper elevation={1} sx={{ borderRadius: 2, overflow: "hidden" }}>
+                        {children}
+                      </Paper>
+                    </Container>
+                  )}
                 </Box>
               </Box>
             </AuthProvider>

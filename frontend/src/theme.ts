@@ -11,6 +11,10 @@ const theme = createTheme({
     secondary: {
       main: "#9c27b0",
     },
+    background: {
+      default: "#eceff1", // matte light grey
+      paper: "#ffffff",
+    },
   },
   typography: {
     h6: {
