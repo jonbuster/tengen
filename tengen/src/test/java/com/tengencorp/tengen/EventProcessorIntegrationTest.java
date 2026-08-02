@@ -4,14 +4,18 @@ import com.tengencorp.tengen.entity.AggregateType;
 import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.entity.RuleAction;
 import com.tengencorp.tengen.repository.RuleRepository;
+import com.tengencorp.tengen.repository.RuleEventRepository;
 import com.tengencorp.tengen.entity.RuleType;
 import com.tengencorp.tengen.service.WebhookClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -38,11 +42,15 @@ class EventProcessorIntegrationTest {
     @Autowired
     private RuleRepository ruleRepository;
 
+    @Autowired
+    private RuleEventRepository ruleEventRepository;
+
     @MockitoBean
     private WebhookClient webhookClient;
 
     @BeforeEach
     void cleanUp() {
+        ruleEventRepository.deleteAll();
         ruleRepository.deleteAll();
     }
 
@@ -60,6 +68,12 @@ class EventProcessorIntegrationTest {
 
     private Rule aggregateRule(String name, String eventType, String source, String condition,
                                AggregateType aggType, String aggField, double threshold, int windowSeconds) {
+        return aggregateRule(name, eventType, source, condition, aggType, aggField, null, threshold, windowSeconds);
+    }
+
+    private Rule aggregateRule(String name, String eventType, String source, String condition,
+                               AggregateType aggType, String aggField, String groupBy,
+                               double threshold, int windowSeconds) {
         Rule rule = new Rule();
         rule.setName(name);
         rule.setRuleType(RuleType.AGGREGATE);
@@ -69,6 +83,7 @@ class EventProcessorIntegrationTest {
         rule.setConditionScript(condition);
         rule.setAggType(aggType);
         rule.setAggField(aggField);
+        rule.setGroupBy(groupBy);
         rule.setThreshold(threshold);
         rule.setWindowSeconds(windowSeconds);
         rule.setActive(true);
@@ -76,17 +91,179 @@ class EventProcessorIntegrationTest {
     }
 
     private String eventJson(String type, String source, double amount, String country) {
+        return eventJsonAt(type, source, amount, country, "2026-07-31T15:30:00Z");
+    }
+
+    private String eventJsonAt(String type, String source, double amount, String country, String timestamp) {
+        return """
+            {
+              "type": "%s",
+              "source": "%s",
+              "timestamp": "%s",
+              "data": {
+                "amount": %s,
+                "country": "%s"
+              }
+            }
+            """.formatted(type, source, timestamp, amount, country);
+    }
+
+    private String keyedEventJson(String type, String source, String userId, double amount) {
         return """
             {
               "type": "%s",
               "source": "%s",
               "timestamp": "2026-07-31T15:30:00Z",
               "data": {
-                "amount": %s,
-                "country": "%s"
+                "userId": "%s",
+                "amount": %s
               }
             }
-            """.formatted(type, source, amount, country);
+            """.formatted(type, source, userId, amount);
+    }
+
+    private String jsonString(String value) {
+        return value.replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\r", "\\r")
+            .replace("\n", "\\n");
+    }
+
+    @Test
+    void keyedAggregateKeepsGroupWindowsSeparate() throws Exception {
+        aggregateRule("keyed-sum", "transaction", "payment-api", "data.amount >= 0",
+            AggregateType.SUM, "data.amount", "data.userId", 1000, 300);
+
+        mockMvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(keyedEventJson("transaction", "payment-api", "alice", 700)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.matched").value(false));
+
+        mockMvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(keyedEventJson("transaction", "payment-api", "bob", 900)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.matched").value(false));
+
+        mockMvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(keyedEventJson("transaction", "payment-api", "alice", 400)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.matched").value(true))
+            .andExpect(jsonPath("$.aggregates['keyed-sum'].value").value(1100.0))
+            .andExpect(jsonPath("$.aggregates['keyed-sum'].groupKey").value("alice"));
+    }
+
+    @Test
+    void keyedAggregateIgnoresEventsWithoutGroupKey() throws Exception {
+        aggregateRule("keyed-missing", "transaction", "payment-api", "data.amount >= 0",
+            AggregateType.SUM, "data.amount", "userId", 1, 300);
+
+        mockMvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(eventJson("transaction", "payment-api", 1500, "PH")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.matched").value(false))
+            .andExpect(jsonPath("$.rules").isEmpty());
+    }
+
+    @Test
+    @WithMockUser
+    void keyedRuleTesterIncludesCandidateForItsGroupWithoutPersistingIt() throws Exception {
+        Rule rule = aggregateRule("keyed-tester", "transaction", "payment-api", "data.amount >= 0",
+            AggregateType.SUM, "data.amount", "data.userId", 1000, 300);
+        long rowsBefore = ruleEventRepository.count();
+
+        mockMvc.perform(post("/api/rules/test")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "mode": "single",
+                      "ruleId": %d,
+                      "eventJson": "%s"
+                    }
+                    """.formatted(rule.getId(), jsonString(keyedEventJson("transaction", "payment-api", "alice", 1200)))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.matched").value(true))
+            .andExpect(jsonPath("$.aggregateValue").value(1200.0))
+            .andExpect(jsonPath("$.groupKey").value("alice"));
+
+        assertThat(ruleEventRepository.count()).isEqualTo(rowsBefore);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "SUM,1500.0",
+        "AVG,1500.0",
+        "MIN,1500.0",
+        "MAX,1500.0"
+    })
+    void nonCountAggregatesResolveDataPrefixedFields(AggregateType aggregateType, double expectedValue) throws Exception {
+        aggregateRule("aggregate-" + aggregateType.name().toLowerCase(), "transaction", "payment-api",
+            "data.amount >= 1000", aggregateType, "data.amount", 1500, 300);
+
+        mockMvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(eventJson("transaction", "payment-api", 1500, "PH")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.matched").value(true))
+            .andExpect(jsonPath("$.aggregates['aggregate-" + aggregateType.name().toLowerCase() + "'].value")
+                .value(expectedValue));
+    }
+
+    @Test
+    void aggregateRuleAlsoResolvesCanonicalFieldWithoutDataPrefix() throws Exception {
+        aggregateRule("canonical-amount", "transaction", "payment-api",
+            "data.amount >= 1000", AggregateType.SUM, "amount", 1500, 300);
+
+        mockMvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(eventJson("transaction", "payment-api", 1500, "PH")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.matched").value(true))
+            .andExpect(jsonPath("$.aggregates['canonical-amount'].value").value(1500.0));
+    }
+
+    @Test
+    void lateEventDoesNotIncludeFutureEventsInItsWindow() throws Exception {
+        aggregateRule("ordered-count", "transaction", "payment-api",
+            "data.amount >= 0", AggregateType.COUNT, null, 2, 300);
+
+        mockMvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(eventJsonAt("transaction", "payment-api", 1, "PH", "2026-07-31T15:35:00Z")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.matched").value(false));
+
+        mockMvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(eventJsonAt("transaction", "payment-api", 1, "PH", "2026-07-31T15:30:00Z")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.matched").value(false));
+    }
+
+    @Test
+    @WithMockUser
+    void ruleTesterIncludesCandidateInAggregateWithoutPersistingIt() throws Exception {
+        Rule rule = aggregateRule("tester-sum", "transaction", "payment-api",
+            "data.amount >= 1000", AggregateType.SUM, "data.amount", 1000, 300);
+        long rowsBefore = ruleEventRepository.count();
+
+        mockMvc.perform(post("/api/rules/test")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "mode": "single",
+                      "ruleId": %d,
+                      "eventJson": "%s"
+                    }
+                    """.formatted(rule.getId(), jsonString(eventJson("transaction", "payment-api", 1500, "PH")))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.matched").value(true))
+            .andExpect(jsonPath("$.aggregateValue").value(1500.0));
+
+        assertThat(ruleEventRepository.count()).isEqualTo(rowsBefore);
     }
 
     @Test

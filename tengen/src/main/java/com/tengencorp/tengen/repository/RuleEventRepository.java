@@ -11,31 +11,55 @@ public interface RuleEventRepository extends JpaRepository<RuleEvent, Long> {
 
     @Query("""
         select count(re) from RuleEvent re
-        where re.rule.id = :ruleId and re.occurredAt >= :since
+        where re.rule.id = :ruleId
+          and ((:groupKey is null and re.groupKey is null) or re.groupKey = :groupKey)
+          and re.occurredAt > :since and re.occurredAt <= :until
         """)
-    long countInWindow(@Param("ruleId") Long ruleId, @Param("since") Instant since);
+    long countInWindow(@Param("ruleId") Long ruleId, @Param("since") Instant since,
+                       @Param("until") Instant until, @Param("groupKey") String groupKey);
+
+    @Query("""
+        select count(re.value) from RuleEvent re
+        where re.rule.id = :ruleId
+          and ((:groupKey is null and re.groupKey is null) or re.groupKey = :groupKey)
+          and re.occurredAt > :since and re.occurredAt <= :until
+        """)
+    long countValuesInWindow(@Param("ruleId") Long ruleId, @Param("since") Instant since,
+                             @Param("until") Instant until, @Param("groupKey") String groupKey);
 
     @Query("""
         select coalesce(sum(re.value), 0.0) from RuleEvent re
-        where re.rule.id = :ruleId and re.occurredAt >= :since
+        where re.rule.id = :ruleId
+          and ((:groupKey is null and re.groupKey is null) or re.groupKey = :groupKey)
+          and re.occurredAt > :since and re.occurredAt <= :until
         """)
-    double sumInWindow(@Param("ruleId") Long ruleId, @Param("since") Instant since);
+    double sumInWindow(@Param("ruleId") Long ruleId, @Param("since") Instant since,
+                       @Param("until") Instant until, @Param("groupKey") String groupKey);
 
     @Query("""
         select coalesce(avg(re.value), 0.0) from RuleEvent re
-        where re.rule.id = :ruleId and re.occurredAt >= :since
+        where re.rule.id = :ruleId
+          and ((:groupKey is null and re.groupKey is null) or re.groupKey = :groupKey)
+          and re.occurredAt > :since and re.occurredAt <= :until
         """)
-    double avgInWindow(@Param("ruleId") Long ruleId, @Param("since") Instant since);
+    double avgInWindow(@Param("ruleId") Long ruleId, @Param("since") Instant since,
+                       @Param("until") Instant until, @Param("groupKey") String groupKey);
 
     @Query("""
-        select coalesce(min(re.value), 0.0) from RuleEvent re
-        where re.rule.id = :ruleId and re.occurredAt >= :since
+        select min(re.value) from RuleEvent re
+        where re.rule.id = :ruleId
+          and ((:groupKey is null and re.groupKey is null) or re.groupKey = :groupKey)
+          and re.occurredAt > :since and re.occurredAt <= :until
         """)
-    double minInWindow(@Param("ruleId") Long ruleId, @Param("since") Instant since);
+    Double minInWindow(@Param("ruleId") Long ruleId, @Param("since") Instant since,
+                       @Param("until") Instant until, @Param("groupKey") String groupKey);
 
     @Query("""
-        select coalesce(max(re.value), 0.0) from RuleEvent re
-        where re.rule.id = :ruleId and re.occurredAt >= :since
+        select max(re.value) from RuleEvent re
+        where re.rule.id = :ruleId
+          and ((:groupKey is null and re.groupKey is null) or re.groupKey = :groupKey)
+          and re.occurredAt > :since and re.occurredAt <= :until
         """)
-    double maxInWindow(@Param("ruleId") Long ruleId, @Param("since") Instant since);
+    Double maxInWindow(@Param("ruleId") Long ruleId, @Param("since") Instant since,
+                       @Param("until") Instant until, @Param("groupKey") String groupKey);
 }

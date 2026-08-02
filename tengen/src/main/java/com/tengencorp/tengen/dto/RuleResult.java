@@ -15,5 +15,6 @@ public record RuleResult(
         boolean conditionMatched,
         Double aggregateValue,
         Double threshold,
-        Integer windowSeconds) {
+        Integer windowSeconds,
+        String groupKey) {
 }

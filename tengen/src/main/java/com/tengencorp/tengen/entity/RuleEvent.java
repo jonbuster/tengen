@@ -24,7 +24,8 @@ import java.time.Instant;
  */
 @Entity
 @Table(name = "rule_events", indexes = {
-    @Index(name = "idx_rule_events_rule_occurred", columnList = "rule_id, occurred_at")
+    @Index(name = "idx_rule_events_rule_occurred", columnList = "rule_id, occurred_at"),
+    @Index(name = "idx_rule_events_rule_group_occurred", columnList = "rule_id, group_key, occurred_at")
 })
 @Getter
 @Setter
@@ -49,6 +50,10 @@ public class RuleEvent {
     @Column
     private Double value;
 
+    /** Resolved business key for keyed aggregates; NULL for global aggregates. */
+    @Column(name = "group_key", length = 500)
+    private String groupKey;
+
     @Column(name = "occurred_at", nullable = false)
     private Instant occurredAt;
 
@@ -60,9 +65,14 @@ public class RuleEvent {
     }
 
     public RuleEvent(Rule rule, Event event, Double value, Instant occurredAt) {
+        this(rule, event, value, null, occurredAt);
+    }
+
+    public RuleEvent(Rule rule, Event event, Double value, String groupKey, Instant occurredAt) {
         this.rule = rule;
         this.event = event;
         this.value = value;
+        this.groupKey = groupKey;
         this.occurredAt = occurredAt;
     }
 }

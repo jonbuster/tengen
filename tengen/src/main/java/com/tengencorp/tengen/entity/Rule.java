@@ -61,6 +61,9 @@ public class Rule {
     @Column(name = "agg_field", length = 200)
     private String aggField;
 
+    @Column(name = "group_by", length = 200)
+    private String groupBy;
+
     @Column(nullable = false)
     private Double threshold = 0.0;
 

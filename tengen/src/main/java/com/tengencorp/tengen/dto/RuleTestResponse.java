@@ -17,17 +17,18 @@ public record RuleTestResponse(
         Boolean matched,
         Boolean conditionMatched,
         Double aggregateValue,
+        String groupKey,
         Event event,
         List<RuleResult> results,
         Boolean anyMatched) {
 
     public static RuleTestResponse single(Rule rule, boolean matched, boolean conditionMatched,
-                                          Double aggregateValue, Event event) {
+                                          Double aggregateValue, String groupKey, Event event) {
         return new RuleTestResponse(RuleResponse.from(rule), matched, conditionMatched,
-            aggregateValue, event, null, null);
+            aggregateValue, groupKey, event, null, null);
     }
 
     public static RuleTestResponse all(List<RuleResult> results, boolean anyMatched, Event event) {
-        return new RuleTestResponse(null, null, null, null, event, results, anyMatched);
+        return new RuleTestResponse(null, null, null, null, null, event, results, anyMatched);
     }
 }

@@ -14,6 +14,7 @@ export interface Rule {
   windowSeconds: number | null;
   aggType: AggregateType | null;
   aggField: string | null;
+  groupBy: string | null;
   threshold: number;
   active: boolean;
   createdAt: string;
@@ -31,6 +32,7 @@ export interface RuleRequest {
   windowSeconds?: number | null;
   aggType?: AggregateType | null;
   aggField?: string | null;
+  groupBy?: string | null;
   threshold?: number;
   active: boolean;
 }
@@ -51,6 +53,7 @@ export interface RuleResult {
   aggregateValue: number | null;
   threshold: number | null;
   windowSeconds: number | null;
+  groupKey: string | null;
 }
 
 export interface TestResult {
@@ -58,6 +61,7 @@ export interface TestResult {
   matched: boolean | null;
   conditionMatched: boolean | null;
   aggregateValue: number | null;
+  groupKey: string | null;
   event: unknown;
   results: RuleResult[] | null;
   anyMatched: boolean | null;

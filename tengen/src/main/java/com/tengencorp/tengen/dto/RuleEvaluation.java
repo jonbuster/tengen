@@ -8,8 +8,13 @@ import com.tengencorp.tengen.entity.RuleType;
  *
  * @param conditionMatched whether pre-filter + Aviator condition passed
  * @param aggregateValue   windowed aggregate value, or null for CONDITION rules
+ * @param groupKey         resolved grouping key, or null for global aggregates
  */
-public record RuleEvaluation(boolean conditionMatched, Double aggregateValue) {
+public record RuleEvaluation(boolean conditionMatched, Double aggregateValue, String groupKey) {
+
+    public RuleEvaluation(boolean conditionMatched, Double aggregateValue) {
+        this(conditionMatched, aggregateValue, null);
+    }
 
     public boolean matched(Rule rule) {
         if (!conditionMatched) {

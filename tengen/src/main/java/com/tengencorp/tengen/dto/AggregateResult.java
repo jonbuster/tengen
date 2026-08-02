@@ -10,5 +10,6 @@ public record AggregateResult(
         String function,
         double value,
         double threshold,
-        int windowSeconds) {
+        int windowSeconds,
+        String groupKey) {
 }

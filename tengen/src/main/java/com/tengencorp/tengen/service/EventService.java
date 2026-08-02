@@ -79,7 +79,8 @@ public class EventService {
                     rule.getAggType() != null ? rule.getAggType().name() : "",
                     evaluation.aggregateValue() != null ? evaluation.aggregateValue() : 0.0,
                     rule.getThreshold(),
-                    rule.getWindowSeconds() != null ? rule.getWindowSeconds() : 0
+                    rule.getWindowSeconds() != null ? rule.getWindowSeconds() : 0,
+                    evaluation.groupKey()
                 );
                 aggregates.put(rule.getName(), aggregateResult);
             }

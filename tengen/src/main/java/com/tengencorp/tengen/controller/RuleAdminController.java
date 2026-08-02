@@ -106,7 +106,8 @@ public class RuleAdminController {
                     evaluation.conditionMatched(),
                     evaluation.aggregateValue(),
                     rule.getThreshold(),
-                    rule.getWindowSeconds()));
+                    rule.getWindowSeconds(),
+                    evaluation.groupKey()));
             }
             return RuleTestResponse.all(results, anyMatched, event);
         }
@@ -121,6 +122,7 @@ public class RuleAdminController {
             evaluation.matched(rule),
             evaluation.conditionMatched(),
             evaluation.aggregateValue(),
+            evaluation.groupKey(),
             event);
     }
 

@@ -52,6 +52,7 @@ function toRequest(
     windowSeconds: values.windowSeconds ? Number(values.windowSeconds) : null,
     aggType: ruleType === "AGGREGATE" ? (values.aggType as RuleRequest["aggType"]) : null,
     aggField: ruleType === "AGGREGATE" ? values.aggField || null : null,
+    groupBy: ruleType === "AGGREGATE" ? values.groupBy || null : null,
     threshold: values.threshold ? Number(values.threshold) : 0,
     active: values.active === "true",
   };
@@ -69,6 +70,7 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
     windowSeconds: initial?.windowSeconds?.toString() ?? "",
     aggType: initial?.aggType ?? "",
     aggField: initial?.aggField ?? "",
+    groupBy: initial?.groupBy ?? "",
     threshold: initial?.threshold?.toString() ?? "0",
     active: String(initial?.active ?? true),
   }));
@@ -156,13 +158,28 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
               </TextField>
             </Grid>
             <Grid item xs={12} sm={4}>
-              <TextField label="Aggregate Field (e.g. data.amount)" value={values.aggField} onChange={set("aggField")} fullWidth />
+              <TextField
+                label="Aggregate Field (e.g. data.amount)"
+                value={values.aggField}
+                onChange={set("aggField")}
+                fullWidth
+                helperText="Use amount or data.amount; both refer to the event data field."
+              />
             </Grid>
             <Grid item xs={12} sm={4}>
               <TextField label="Window (seconds)" type="number" value={values.windowSeconds} onChange={set("windowSeconds")} fullWidth />
             </Grid>
             <Grid item xs={12} sm={4}>
               <TextField label="Threshold" type="number" value={values.threshold} onChange={set("threshold")} fullWidth />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="Group by field (optional)"
+                value={values.groupBy}
+                onChange={set("groupBy")}
+                fullWidth
+                helperText="Use data.userId or userId. Leave blank for a global aggregate."
+              />
             </Grid>
           </Grid>
         </>

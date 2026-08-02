@@ -4,6 +4,7 @@ import com.tengencorp.tengen.entity.AggregateType;
 import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.entity.RuleAction;
 import com.tengencorp.tengen.entity.RuleType;
+import com.tengencorp.tengen.helper.AggregateFieldPath;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -45,6 +46,9 @@ public record RuleRequest(
         @Size(max = 200, message = "Aggregate field must be at most 200 characters")
         String aggField,
 
+        @Size(max = 200, message = "Group-by field must be at most 200 characters")
+        String groupBy,
+
         Double threshold,
 
         boolean active) {
@@ -65,7 +69,8 @@ public record RuleRequest(
         rule.setConditionScript(conditionScript);
         rule.setWindowSeconds(windowSeconds);
         rule.setAggType(ruleType == RuleType.AGGREGATE ? aggType : null);
-        rule.setAggField(ruleType == RuleType.AGGREGATE ? aggField : null);
+        rule.setAggField(ruleType == RuleType.AGGREGATE ? AggregateFieldPath.normalize(aggField) : null);
+        rule.setGroupBy(ruleType == RuleType.AGGREGATE ? AggregateFieldPath.normalize(groupBy) : null);
         rule.setThreshold(threshold != null ? threshold : 0.0);
         rule.setActive(active);
     }

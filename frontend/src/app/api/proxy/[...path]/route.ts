@@ -64,7 +64,10 @@ async function forward(
   if (text.length > 0) {
     responseHeaders["Content-Type"] = "application/json";
   }
-  return new NextResponse(text, {
+  // The Fetch Response API forbids a body for these status codes, even when
+  // the body is an empty string.
+  const responseBody = [204, 205, 304].includes(upstream.status) ? null : text;
+  return new NextResponse(responseBody, {
     status: upstream.status,
     headers: responseHeaders,
   });

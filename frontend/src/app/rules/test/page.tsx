@@ -111,6 +111,12 @@ export default function TestPage() {
 
       {result && (
         <Box>
+          {((mode === "single" && result.rule?.ruleType === "AGGREGATE") ||
+            (mode === "all" && result.results?.some((r) => r.ruleType === "AGGREGATE"))) && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Aggregate values include the sample event and matching events already in the window. The sample event is not saved.
+            </Alert>
+          )}
           {mode === "single" ? (
             <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
               <Chip
@@ -124,6 +130,9 @@ export default function TestPage() {
               />
               {result.aggregateValue != null && (
                 <Chip label={`Aggregate: ${result.aggregateValue}`} variant="outlined" />
+              )}
+              {result.groupKey != null && (
+                <Chip label={`Group: ${result.groupKey}`} variant="outlined" />
               )}
             </Stack>
           ) : (
@@ -143,6 +152,7 @@ export default function TestPage() {
                     <TableCell>Matched</TableCell>
                     <TableCell>Condition</TableCell>
                     <TableCell>Aggregate</TableCell>
+                    <TableCell>Group</TableCell>
                     <TableCell>Threshold</TableCell>
                     <TableCell>Window (s)</TableCell>
                   </TableRow>
@@ -162,6 +172,7 @@ export default function TestPage() {
                       </TableCell>
                       <TableCell>{r.conditionMatched ? "Passed" : "Failed"}</TableCell>
                       <TableCell>{r.aggregateValue ?? "-"}</TableCell>
+                      <TableCell>{r.groupKey ?? "-"}</TableCell>
                       <TableCell>{r.threshold ?? "-"}</TableCell>
                       <TableCell>{r.windowSeconds ?? "-"}</TableCell>
                     </TableRow>

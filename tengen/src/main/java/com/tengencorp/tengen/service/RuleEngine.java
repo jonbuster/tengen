@@ -8,6 +8,7 @@ import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.entity.RuleEvent;
 import com.tengencorp.tengen.repository.RuleEventRepository;
 import com.tengencorp.tengen.entity.RuleType;
+import com.tengencorp.tengen.helper.AggregateFieldPath;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -50,7 +51,8 @@ public class RuleEngine {
 
     /**
      * Evaluate without persisting a rule_event row — used by the admin "test rule" box.
-     * The window aggregate still reflects already-persisted rows.
+     * The window aggregate reflects already-persisted rows plus the candidate
+     * event, without saving the candidate.
      */
     public RuleEvaluation test(Event event, Rule rule) {
         return evaluateInternal(event, rule, false);
@@ -68,11 +70,15 @@ public class RuleEngine {
 
         if (rule.getRuleType() == RuleType.AGGREGATE) {
             Double value = extractNumericValue(event, rule.getAggField());
-            if (persist) {
-                ruleEventRepository.save(new RuleEvent(rule, event, value, occurredAt));
+            String groupKey = extractGroupKey(event, rule);
+            if (usesGrouping(rule) && groupKey == null) {
+                return new RuleEvaluation(true, null, null);
             }
-            double window = aggregate(rule, occurredAt);
-            return new RuleEvaluation(true, window);
+            if (persist) {
+                ruleEventRepository.save(new RuleEvent(rule, event, value, groupKey, occurredAt));
+            }
+            double window = aggregate(rule, occurredAt, !persist, value, groupKey);
+            return new RuleEvaluation(true, window, groupKey);
         }
 
         // CONDITION rule — record the row for future upgrades, no lookback.
@@ -118,12 +124,32 @@ public class RuleEngine {
         return null;
     }
 
+    private String extractGroupKey(Event event, Rule rule) {
+        if (!usesGrouping(rule)) {
+            return null;
+        }
+        Object value = resolvePath(event.getData(), rule.getGroupBy());
+        if (value == null || value instanceof Map<?, ?>) {
+            return null;
+        }
+        String groupKey = String.valueOf(value).trim();
+        return groupKey.isBlank() ? null : groupKey;
+    }
+
+    private boolean usesGrouping(Rule rule) {
+        return rule.getGroupBy() != null && !rule.getGroupBy().isBlank();
+    }
+
     /**
      * Resolve a dotted path like {@code data.amount} or {@code amount} against the event map.
      */
     static Object resolvePath(Map<String, Object> map, String path) {
         Object current = map;
-        for (String part : path.split("\\.")) {
+        String normalizedPath = AggregateFieldPath.normalize(path);
+        if (normalizedPath == null || normalizedPath.isBlank()) {
+            return null;
+        }
+        for (String part : normalizedPath.split("\\.")) {
             if (current instanceof Map<?, ?> m) {
                 current = m.get(part);
             } else {
@@ -133,16 +159,53 @@ public class RuleEngine {
         return current;
     }
 
-    private double aggregate(Rule rule, Instant occurredAt) {
+    private double aggregate(Rule rule, Instant occurredAt, boolean includeCandidate,
+                             Double candidateValue, String groupKey) {
         Instant since = occurredAt.minusSeconds(rule.getWindowSeconds());
+        Instant until = occurredAt;
         AggregateType type = rule.getAggType();
         Long ruleId = rule.getId();
         return switch (type) {
-            case COUNT -> ruleEventRepository.countInWindow(ruleId, since);
-            case SUM -> ruleEventRepository.sumInWindow(ruleId, since);
-            case AVG -> ruleEventRepository.avgInWindow(ruleId, since);
-            case MIN -> ruleEventRepository.minInWindow(ruleId, since);
-            case MAX -> ruleEventRepository.maxInWindow(ruleId, since);
+            case COUNT -> ruleEventRepository.countInWindow(ruleId, since, until, groupKey)
+                + (includeCandidate ? 1 : 0);
+            case SUM -> ruleEventRepository.sumInWindow(ruleId, since, until, groupKey)
+                + (includeCandidate ? numericCandidateValue(candidateValue) : 0.0);
+            case AVG -> average(ruleId, since, until, includeCandidate, candidateValue, groupKey);
+            case MIN -> minimum(ruleId, since, until, includeCandidate, candidateValue, groupKey);
+            case MAX -> maximum(ruleId, since, until, includeCandidate, candidateValue, groupKey);
         };
+    }
+
+    private double average(Long ruleId, Instant since, Instant until,
+                           boolean includeCandidate, Double candidateValue, String groupKey) {
+        double sum = ruleEventRepository.sumInWindow(ruleId, since, until, groupKey);
+        long count = ruleEventRepository.countValuesInWindow(ruleId, since, until, groupKey);
+        if (includeCandidate && candidateValue != null) {
+            sum += candidateValue;
+            count++;
+        }
+        return count == 0 ? 0.0 : sum / count;
+    }
+
+    private double minimum(Long ruleId, Instant since, Instant until,
+                           boolean includeCandidate, Double candidateValue, String groupKey) {
+        Double minimum = ruleEventRepository.minInWindow(ruleId, since, until, groupKey);
+        if (includeCandidate && candidateValue != null) {
+            minimum = minimum == null ? candidateValue : Math.min(minimum, candidateValue);
+        }
+        return minimum != null ? minimum : 0.0;
+    }
+
+    private double maximum(Long ruleId, Instant since, Instant until,
+                           boolean includeCandidate, Double candidateValue, String groupKey) {
+        Double maximum = ruleEventRepository.maxInWindow(ruleId, since, until, groupKey);
+        if (includeCandidate && candidateValue != null) {
+            maximum = maximum == null ? candidateValue : Math.max(maximum, candidateValue);
+        }
+        return maximum != null ? maximum : 0.0;
+    }
+
+    private double numericCandidateValue(Double candidateValue) {
+        return candidateValue != null ? candidateValue : 0.0;
     }
 }
