@@ -4,7 +4,6 @@ import {
   Autocomplete,
   Box,
   Button,
-  Chip,
   FormControl,
   IconButton,
   InputLabel,
@@ -27,7 +26,6 @@ import {
   createGroup,
   createLeaf,
   generateAviator,
-  nextId,
 } from "@/lib/conditionBuilder";
 
 interface ConditionBuilderProps {

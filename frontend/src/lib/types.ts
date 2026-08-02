@@ -2,6 +2,7 @@ export type RuleType = "CONDITION" | "AGGREGATE";
 export type RuleAction = "LOG" | "WEBHOOK";
 export type AggregateType = "COUNT" | "SUM" | "AVG" | "MIN" | "MAX";
 export type TriggerMode = "EVERY_MATCH" | "EDGE" | "ONCE_PER_WINDOW";
+export type RuleValidationStatus = "VALID" | "INVALID";
 
 export interface Rule {
   id: number;
@@ -20,6 +21,8 @@ export interface Rule {
   groupBy: string | null;
   threshold: number;
   active: boolean;
+  validationStatus: RuleValidationStatus;
+  validationError: string | null;
   revision: number;
   archivedAt: string | null;
   createdAt: string;

@@ -40,6 +40,9 @@ public class Event {
     @Column(name = "occurred_at", nullable = false)
     private Instant occurredAt;
 
+    @Column(name = "received_at", nullable = false, updatable = false)
+    private Instant receivedAt;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb", nullable = false)
     private Map<String, Object> data;
@@ -53,6 +56,9 @@ public class Event {
     void onCreate() {
         if (occurredAt == null) {
             occurredAt = Instant.now();
+        }
+        if (receivedAt == null) {
+            receivedAt = Instant.now();
         }
     }
 

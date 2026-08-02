@@ -18,5 +18,6 @@ public record WebhookDeliveryAttempt(
         TriggerMode triggerMode,
         Instant windowStart,
         Integer cooldownSeconds,
+        Instant createdAt,
         int attemptNumber) {
 }

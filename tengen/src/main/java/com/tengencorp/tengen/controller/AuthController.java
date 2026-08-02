@@ -4,7 +4,10 @@ import com.tengencorp.tengen.dto.LoginRequest;
 import com.tengencorp.tengen.dto.RefreshRequest;
 import com.tengencorp.tengen.security.AdminUser;
 import com.tengencorp.tengen.service.JwtService;
+import com.tengencorp.tengen.service.AuthSessionService;
+import com.tengencorp.tengen.service.LoginThrottleService;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -23,38 +26,46 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/auth")
 public class AuthController {
 
-    private final JwtService jwtService;
     private final AdminUser adminUser;
     private final PasswordEncoder passwordEncoder;
+    private final AuthSessionService authSessionService;
+    private final LoginThrottleService loginThrottleService;
 
-    public AuthController(JwtService jwtService, AdminUser adminUser, PasswordEncoder passwordEncoder) {
-        this.jwtService = jwtService;
+    public AuthController(AdminUser adminUser, PasswordEncoder passwordEncoder,
+                          AuthSessionService authSessionService,
+                          LoginThrottleService loginThrottleService) {
         this.adminUser = adminUser;
         this.passwordEncoder = passwordEncoder;
+        this.authSessionService = authSessionService;
+        this.loginThrottleService = loginThrottleService;
     }
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
+    public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request,
+                                              HttpServletRequest servletRequest) {
+        String remoteAddress = servletRequest.getRemoteAddr();
+        loginThrottleService.check(remoteAddress, request.username());
         if (!adminUser.matches(request.username(), request.password(), passwordEncoder)) {
+            loginThrottleService.failure(remoteAddress, request.username());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        return ResponseEntity.ok(tokenPair(adminUser.getUsername()));
+        loginThrottleService.success(remoteAddress, request.username());
+        return ResponseEntity.ok(authSessionService.create(adminUser.getUsername()));
     }
 
     @PostMapping("/refresh")
     public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshRequest request) {
         try {
-            String username = jwtService.validate(request.refreshToken());
-            if (!adminUser.getUsername().equals(username)) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-            }
-            return ResponseEntity.ok(tokenPair(username));
+            return ResponseEntity.ok(
+                authSessionService.rotate(request.refreshToken(), adminUser.getUsername()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
     }
 
-    private AuthResponse tokenPair(String username) {
-        return new AuthResponse(jwtService.issueAccessToken(username), jwtService.issueRefreshToken(username));
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@Valid @RequestBody RefreshRequest request) {
+        authSessionService.revoke(request.refreshToken());
+        return ResponseEntity.noContent().build();
     }
 }

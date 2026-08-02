@@ -77,6 +77,13 @@ public class Rule {
     @Column(nullable = false)
     private boolean active = true;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "validation_status", nullable = false, length = 20)
+    private RuleValidationStatus validationStatus = RuleValidationStatus.VALID;
+
+    @Column(name = "validation_error", length = 1000)
+    private String validationError;
+
     @Column(nullable = false)
     private Integer revision = 1;
 
@@ -106,6 +113,9 @@ public class Rule {
         Instant now = Instant.now();
         if (revision == null || revision < 1) {
             revision = 1;
+        }
+        if (validationStatus == null) {
+            validationStatus = RuleValidationStatus.VALID;
         }
         createdAt = now;
         updatedAt = now;

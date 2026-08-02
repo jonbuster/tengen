@@ -53,6 +53,7 @@ public class WebhookOutboxDeliveryService {
                 outbox.getTriggerMode(),
                 outbox.getWindowStart(),
                 outbox.getCooldownSeconds(),
+                outbox.getCreatedAt(),
                 (outbox.getAttemptCount() != null ? outbox.getAttemptCount() : 0) + 1));
         }
         return attempts;

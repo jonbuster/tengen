@@ -12,11 +12,17 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Collection;
 
 public interface WebhookOutboxRepository extends JpaRepository<WebhookOutbox, Long>,
                                                 JpaSpecificationExecutor<WebhookOutbox> {
 
     Optional<WebhookOutbox> findByDeduplicationKey(String deduplicationKey);
+
+    long countByStatusIn(Collection<WebhookOutboxStatus> statuses);
+
+    Optional<WebhookOutbox> findFirstByStatusInOrderByCreatedAtAsc(
+        Collection<WebhookOutboxStatus> statuses);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select outbox from WebhookOutbox outbox where outbox.id = :id")

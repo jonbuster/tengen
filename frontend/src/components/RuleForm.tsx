@@ -53,7 +53,6 @@ interface RuleFormProps {
 }
 
 function toRequest(
-  initial: Rule | undefined,
   values: Record<string, string>,
   condition: ConditionGroup,
   conditionMode: "builder" | "raw",
@@ -124,7 +123,7 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
       return;
     }
     try {
-      await onSubmit(toRequest(initial, values, condition, conditionMode));
+      await onSubmit(toRequest(values, condition, conditionMode));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save rule");
     }
@@ -281,7 +280,23 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
         exclusive
         value={conditionMode}
         onChange={(_, mode) => {
-          if (mode) setConditionMode(mode);
+          if (!mode || mode === conditionMode) return;
+          if (mode === "raw") {
+            setValues((current) => ({
+              ...current,
+              conditionScript: generateAviator(condition),
+            }));
+            setConditionMode("raw");
+            return;
+          }
+          const parsed = parseAviator(values.conditionScript);
+          if (!parsed) {
+            setError("The raw expression uses syntax that the visual builder cannot represent.");
+            return;
+          }
+          setCondition(parsed);
+          setError(null);
+          setConditionMode("builder");
         }}
         sx={{ mb: 1 }}
       >

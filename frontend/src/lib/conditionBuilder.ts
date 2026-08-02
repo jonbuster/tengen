@@ -73,7 +73,7 @@ function quoteValue(raw: string): string {
   if (!Number.isNaN(Number(value))) return value;
   if (value === "true" || value === "false") return value;
   if (value === "null" || value === "nil") return "nil";
-  return `'${value.replace(/'/g, "\\'")}'`;
+  return `'${value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
 }
 
 function leafToAviator(leaf: ConditionLeaf): string {
@@ -177,10 +177,26 @@ function tokenize(input: string): Token[] {
       continue;
     }
     if (c === "'") {
-      const end = src.indexOf("'", i + 1);
-      if (end === -1) throw new Error("Unterminated string literal");
-      tokens.push({ kind: "value", value: src.slice(i + 1, end) });
-      i = end + 1;
+      let j = i + 1;
+      let value = "";
+      let terminated = false;
+      while (j < src.length) {
+        if (src[j] === "\\" && j + 1 < src.length) {
+          value += src[j + 1];
+          j += 2;
+          continue;
+        }
+        if (src[j] === "'") {
+          terminated = true;
+          j++;
+          break;
+        }
+        value += src[j];
+        j++;
+      }
+      if (!terminated) throw new Error("Unterminated string literal");
+      tokens.push({ kind: "value", value });
+      i = j;
       continue;
     }
     const matchedOp = COMPARISON_OPS.find((op) => src.startsWith(op, i));
@@ -281,10 +297,11 @@ function parsePrimary(p: Parser): ConditionNode {
     return node;
   }
 
-  if (tok.kind === "ident" && tok.value === "string") {
+  if (tok.kind === "ident" && (tok.value === "string.contains" || tok.value === "string")) {
     // string.contains(field, value)
+    const combinedToken = tok.value === "string.contains";
     advance(p);
-    expectKind(p, "ident"); // contains
+    if (!combinedToken) expectKind(p, "ident"); // contains
     expectKind(p, "lparen");
     const fieldTok = advance(p);
     if (fieldTok.kind !== "ident") throw new ParseError("Expected field identifier");

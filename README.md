@@ -57,20 +57,23 @@ Start PostgreSQL and the Spring Boot backend:
 ```bash
 docker compose -f tengen/docker-compose.yml up -d db
 cd tengen
-./mvnw spring-boot:run
+WEBHOOK_WORKER_ENABLED=false ./mvnw spring-boot:run
 ```
 
-For an existing development database, apply the idempotent rule-versioning schema migration before starting the backend:
+Schema changes are managed by Flyway. Before the first start of this version
+against an existing database, make a PostgreSQL backup. Flyway baselines the
+existing schema at V1 and applies the production-hardening migration; new
+databases are built from the same versioned migrations.
 
 ```bash
-docker exec -i tengen-db-1 psql -U tengen -d tengen < tengen/src/main/resources/db/rule-versioning.sql
+docker exec tengen-db-1 pg_dump -U tengen -d tengen -Fc > tengen-before-migration.dump
 ```
 
 In another terminal, start the administration console:
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -79,6 +82,101 @@ npm run dev
 - Default development login: `admin` / `admin`
 
 > Change `ADMIN_PASSWORD` and `JWT_SECRET` before using Tengen outside local development.
+
+### Important development commands
+
+Run the complete stack from Docker without making outbound webhook requests:
+
+```bash
+WEBHOOK_WORKER_ENABLED=false docker compose -f tengen/docker-compose.yml up --build
+```
+
+The worker is part of the Spring Boot application. Disabling it keeps webhook
+intents in the durable outbox as `PENDING`; it does not disable event ingestion
+or rule evaluation. Use `-d` to run in the background:
+
+```bash
+WEBHOOK_WORKER_ENABLED=false docker compose -f tengen/docker-compose.yml up --build -d
+```
+
+Run the full stack with webhook delivery enabled:
+
+```bash
+docker compose -f tengen/docker-compose.yml up --build -d
+```
+
+Run the backend and frontend separately while using the Compose PostgreSQL
+container:
+
+```bash
+docker compose -f tengen/docker-compose.yml up -d db
+
+cd tengen
+WEBHOOK_WORKER_ENABLED=false ./mvnw spring-boot:run
+```
+
+In another terminal:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Run the quality checks without touching the development database. Backend tests
+start isolated PostgreSQL Testcontainers automatically:
+
+```bash
+cd tengen
+./mvnw -q test
+
+cd ../frontend
+npm run lint
+npm test
+npm run build
+# Requires a running local stack and a Playwright browser installation.
+npm run test:e2e
+```
+
+Stop local services without deleting PostgreSQL data:
+
+```bash
+docker compose -f tengen/docker-compose.yml down
+```
+
+Avoid `down -v` unless you intentionally want to delete the local database
+volume.
+
+## Important Changes in This Version
+
+- **Versioned database migrations:** Flyway now owns schema changes and
+  Hibernate uses `ddl-auto=validate`. Back up an existing PostgreSQL database
+  before the first startup; Tengen will preflight the schema and refuse unsafe
+  or unexpected databases.
+- **Safer rules:** create, update, restore, and activation requests share one
+  validator. Invalid expressions, aggregate settings, trigger combinations,
+  and webhook destinations return structured `400` responses. Legacy invalid
+  rules are retained for correction but deactivated.
+- **Separated admin sessions:** access and refresh JWTs have different types,
+  issuers, audiences, and lifetimes. Refresh sessions are hashed, rotated, and
+  revoked on replay or logout. The Next.js proxy refreshes an expired access
+  cookie automatically.
+- **Protected webhooks:** only public HTTPS destinations are accepted. Local,
+  private, loopback, link-local, metadata-service, credential-bearing, and
+  unsafe redirect destinations are rejected. Deliveries include stable IDs and
+  HMAC signatures and remain at-least-once.
+- **Ingestion guardrails:** event requests require a valid `X-API-Key`, support
+  idempotent retries, enforce body-size and per-key rate limits, and can return
+  `413` or `429` when limits are exceeded.
+- **Operational visibility:** liveness/readiness endpoints, Prometheus queue
+  metrics, bounded retention, delivery leases, retry/dead-letter tracking, and
+  structured security logging are included.
+- **Quality gates:** backend Testcontainers integration tests, ESLint, Vitest,
+  Playwright smoke tests, and CI checks now cover the main admin and delivery
+  workflows.
+
+For webhook testing during local development, use a public HTTPS tunnel or keep
+the worker disabled. `http://localhost` callback URLs are intentionally rejected.
 
 ## Send Your First Event
 
@@ -140,6 +238,17 @@ Temporary failures such as timeouts, connection errors, `408`, `429`, and `5xx` 
 
 Successful worker delivery starts or refreshes cooldown state. A failed attempt does not falsely mark the action as delivered.
 
+Webhook delivery is **at least once**. Every attempt for the same outbox row
+reuses `X-Tengen-Delivery-Id`, allowing receivers to deduplicate a callback if
+the network succeeds but the worker restarts before recording success. Requests
+also include `X-Tengen-Timestamp` and `X-Tengen-Signature`; the signature is
+`v1=` followed by the hexadecimal HMAC-SHA256 of
+`<timestamp>.<raw-json-body>` using `WEBHOOK_SIGNING_SECRET`.
+
+Callbacks must use public HTTPS destinations. Localhost, credentials in URLs,
+private/link-local addresses, redirects, and metadata-service destinations are
+rejected.
+
 ### Technology
 
 | Layer | Technology |
@@ -189,6 +298,7 @@ The development defaults work with the included Docker Compose database. Expand 
 | `DB_URL` / `DB_USER` / `DB_PASSWORD` | `jdbc:postgresql://localhost:5432/tengen` / `tengen` / `tengen` | PostgreSQL connection. |
 | `ADMIN_USER` / `ADMIN_PASSWORD` | `admin` / `admin` | Initial admin credentials. The password is BCrypt-hashed at startup. |
 | `JWT_SECRET` | `dev-secret-change-me-please-32-bytes-min` | JWT signing key. Use at least 32 bytes and change it in production. |
+| `JWT_ISSUER` / `JWT_AUDIENCE` | `tengen` / `tengen-admin` | Required JWT issuer and audience. |
 | `JWT_ACCESS_TTL_MINUTES` / `JWT_REFRESH_TTL_DAYS` | `15` / `7` | Admin access and refresh lifetimes. |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | Browser origins allowed to access the backend. |
 | `WEBHOOK_WORKER_ENABLED` | `true` | Enable automatic webhook delivery. |
@@ -197,6 +307,11 @@ The development defaults work with the included Docker Compose database. Expand 
 | `WEBHOOK_WORKER_BASE_DELAY_MS` / `WEBHOOK_WORKER_MAX_DELAY_MS` | `5000` / `900000` | Base and maximum retry backoff. |
 | `WEBHOOK_WORKER_LEASE_DURATION_MS` | `300000` | Claim lease used for restart recovery. |
 | `WEBHOOK_WORKER_CONNECT_TIMEOUT_MS` / `WEBHOOK_WORKER_READ_TIMEOUT_MS` | `3000` / `5000` | Callback connection and response timeouts. |
+| `WEBHOOK_SIGNING_SECRET` | development-only value | HMAC secret used to authenticate webhook deliveries. |
+| `INGESTION_MAX_BODY_BYTES` | `1048576` | Maximum event request size, including chunked bodies. |
+| `INGESTION_RATE_LIMIT_PER_MINUTE` | `600` | Per-API-key limit for the initial single-instance deployment. |
+| `RETENTION_ENABLED` / `RETENTION_DAYS` | `true` / `90` | Terminal operational-data cleanup policy. Rule revisions are never removed. |
+| `RETENTION_BATCH_SIZE` / `RETENTION_SCHEDULE` | `1000` / `0 15 3 * * *` | Bounded cleanup batch and UTC cron schedule. |
 
 </details>
 
@@ -205,11 +320,17 @@ The development defaults work with the included Docker Compose database. Expand 
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8080` | Backend origin used by the Next.js proxy. Docker Compose supplies `http://app:8080`. |
+| `BACKEND_API_URL` | `http://localhost:8080` | Server-only backend origin used by the Next.js proxy. Docker Compose supplies `http://app:8080`. |
 
 </details>
 
 Backend defaults are defined in [`application.properties`](tengen/src/main/resources/application.properties).
+
+When the `prod` or `production` profile is active, startup fails if the default
+admin password, JWT secret, or webhook signing secret is still configured.
+Liveness and readiness are exposed at `/actuator/health/liveness` and
+`/actuator/health/readiness`; Prometheus metrics require an authenticated admin
+request at `/actuator/prometheus`.
 
 ## Run the Full Stack with Docker
 

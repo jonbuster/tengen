@@ -12,6 +12,8 @@ import com.tengencorp.tengen.helper.AggregateFieldPath;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -28,13 +30,21 @@ import java.util.Map;
 public class RuleEngine {
 
     private static final Logger log = LoggerFactory.getLogger(RuleEngine.class);
+    private static final int MAX_GROUP_KEY_LENGTH = 500;
 
     private final AviatorEvaluatorInstance aviator;
     private final RuleEventRepository ruleEventRepository;
+    private final Counter expressionErrors;
+    private final Counter eventDataErrors;
 
-    public RuleEngine(AviatorEvaluatorInstance aviator, RuleEventRepository ruleEventRepository) {
+    public RuleEngine(AviatorEvaluatorInstance aviator, RuleEventRepository ruleEventRepository,
+                      MeterRegistry meterRegistry) {
         this.aviator = aviator;
         this.ruleEventRepository = ruleEventRepository;
+        this.expressionErrors = meterRegistry.counter("tengen.rule.evaluation.errors",
+            "reason", "expression");
+        this.eventDataErrors = meterRegistry.counter("tengen.rule.evaluation.errors",
+            "reason", "event-data");
     }
 
     /**
@@ -74,7 +84,22 @@ public class RuleEngine {
         if (rule.getRuleType() == RuleType.AGGREGATE) {
             Double value = extractNumericValue(event, rule.getAggField());
             if (usesGrouping(rule) && groupKey == null) {
+                log.debug("Aggregate rule skipped because the group key is missing: ruleId={}, eventId={}",
+                    rule.getId(), event.getId());
+                eventDataErrors.increment();
                 return new RuleEvaluation(true, null, null);
+            }
+            if (usesGrouping(rule) && groupKey.length() > MAX_GROUP_KEY_LENGTH) {
+                log.warn("Aggregate rule skipped because the group key is too long: ruleId={}, eventId={}",
+                    rule.getId(), event.getId());
+                eventDataErrors.increment();
+                return new RuleEvaluation(true, null, null);
+            }
+            if (rule.getAggType() != AggregateType.COUNT && value == null) {
+                log.debug("Aggregate rule skipped because its value is not numeric: ruleId={}, eventId={}",
+                    rule.getId(), event.getId());
+                eventDataErrors.increment();
+                return new RuleEvaluation(true, null, groupKey);
             }
             if (persist) {
                 ruleEventRepository.save(new RuleEvent(rule, event, value, groupKey, occurredAt));
@@ -102,6 +127,7 @@ public class RuleEngine {
         } catch (Exception e) {
             // Script errors never fail the request — treat as non-match.
             log.warn("Rule [{}] condition script evaluation failed: {}", rule.getName(), e.getMessage());
+            expressionErrors.increment();
             return false;
         }
     }

@@ -67,11 +67,6 @@ public record RuleRequest(
     }
 
     public void applyTo(Rule rule) {
-        if (action == RuleAction.WEBHOOK && triggerMode == TriggerMode.ONCE_PER_WINDOW
-            && (ruleType != RuleType.AGGREGATE || windowSeconds == null || windowSeconds <= 0)) {
-            throw new IllegalArgumentException(
-                "ONCE_PER_WINDOW requires a webhook aggregate rule with a positive windowSeconds value");
-        }
         rule.setName(name);
         rule.setRuleType(ruleType);
         rule.setAction(action);
@@ -82,9 +77,10 @@ public record RuleRequest(
         rule.setEventType(eventType);
         rule.setSource(source);
         rule.setConditionScript(conditionScript);
-        rule.setWindowSeconds(windowSeconds);
+        rule.setWindowSeconds(ruleType == RuleType.AGGREGATE ? windowSeconds : null);
         rule.setAggType(ruleType == RuleType.AGGREGATE ? aggType : null);
-        rule.setAggField(ruleType == RuleType.AGGREGATE ? AggregateFieldPath.normalize(aggField) : null);
+        rule.setAggField(ruleType == RuleType.AGGREGATE && aggType != AggregateType.COUNT
+            ? AggregateFieldPath.normalize(aggField) : null);
         rule.setGroupBy(ruleType == RuleType.AGGREGATE ? AggregateFieldPath.normalize(groupBy) : null);
         rule.setThreshold(threshold != null ? threshold : 0.0);
         rule.setActive(active);

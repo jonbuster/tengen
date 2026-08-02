@@ -37,17 +37,20 @@ public class RuleLifecycleService {
     private final RuleActionStateRepository actionStateRepository;
     private final RuleActionWindowRepository actionWindowRepository;
     private final ObjectMapper objectMapper;
+    private final RuleValidationService validationService;
 
     public RuleLifecycleService(RuleRepository ruleRepository,
                                 RuleRevisionRepository revisionRepository,
                                 RuleActionStateRepository actionStateRepository,
                                 RuleActionWindowRepository actionWindowRepository,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper,
+                                RuleValidationService validationService) {
         this.ruleRepository = ruleRepository;
         this.revisionRepository = revisionRepository;
         this.actionStateRepository = actionStateRepository;
         this.actionWindowRepository = actionWindowRepository;
         this.objectMapper = objectMapper;
+        this.validationService = validationService;
     }
 
     @Transactional
@@ -56,6 +59,7 @@ public class RuleLifecycleService {
             throw new ConflictException("A rule named '" + request.name() + "' already exists");
         }
         Rule rule = request.toEntity();
+        validationService.validateAndMark(rule);
         rule.setRevision(1);
         rule.setArchivedAt(null);
         rule = ruleRepository.save(rule);
@@ -74,6 +78,7 @@ public class RuleLifecycleService {
         }
 
         Rule proposed = request.toEntity();
+        validationService.validateAndMark(proposed);
         proposed.setArchivedAt(rule.getArchivedAt());
         if (rule.isArchived()) {
             proposed.setActive(false);
@@ -83,6 +88,7 @@ public class RuleLifecycleService {
         }
 
         request.applyTo(rule);
+        validationService.validateAndMark(rule);
         rule.setArchivedAt(proposed.getArchivedAt());
         if (rule.isArchived()) {
             rule.setActive(false);
@@ -101,7 +107,11 @@ public class RuleLifecycleService {
         if (rule.isArchived()) {
             throw new ConflictException("Archived rules must be unarchived before activation changes");
         }
-        rule.setActive(!rule.isActive());
+        boolean activating = !rule.isActive();
+        if (activating) {
+            validationService.validateAndMark(rule);
+        }
+        rule.setActive(activating);
         incrementRevision(rule);
         resetRuntimeState(rule);
         rule = ruleRepository.save(rule);
@@ -157,6 +167,7 @@ public class RuleLifecycleService {
         }
 
         applySnapshot(rule, snapshot);
+        validationService.validateAndMark(rule);
         rule.setActive(false);
         rule.setArchivedAt(null);
         incrementRevision(rule);

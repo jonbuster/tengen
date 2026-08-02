@@ -7,9 +7,14 @@ import com.tengencorp.tengen.entity.WebhookOutbox;
 import com.tengencorp.tengen.repository.RuleRepository;
 import com.tengencorp.tengen.repository.RuleEventRepository;
 import com.tengencorp.tengen.repository.WebhookOutboxRepository;
+import com.tengencorp.tengen.repository.EventRepository;
 import com.tengencorp.tengen.entity.RuleType;
 import com.tengencorp.tengen.entity.WebhookOutboxStatus;
-import com.tengencorp.tengen.service.WebhookClient;
+import com.tengencorp.tengen.service.ApiKeyService;
+import com.tengencorp.tengen.service.WebhookDeliveryAttempt;
+import com.tengencorp.tengen.service.WebhookDeliveryResult;
+import com.tengencorp.tengen.service.WebhookOutboxDeliveryService;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -19,27 +24,68 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyMap;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Integration tests for the event-processing API. These require a running
- * PostgreSQL (see docker-compose). Created per plan; execution is optional.
+ * Integration tests for the event-processing API. The database is a fresh
+ * PostgreSQL container for every test class; the development database is
+ * never used or cleaned by this suite.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@TestPropertySource(properties = "tengen.webhook.worker.enabled=false")
+@TestPropertySource(properties = {
+    "tengen.webhook.worker.enabled=false",
+    "tengen.retention.enabled=false",
+    "admin.password=integration-admin-password",
+    "jwt.secret=integration-test-secret-with-more-than-32-bytes",
+    "tengen.webhook.worker.signing-secret=integration-test-signing-secret-with-more-than-32-bytes"
+})
 class EventProcessorIntegrationTest {
+
+    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17-alpine")
+        .withDatabaseName("test")
+        .withUsername("tengen")
+        .withPassword("tengen");
+
+    @DynamicPropertySource
+    static void registerDatabase(DynamicPropertyRegistry registry) {
+        if (!POSTGRES.isRunning()) {
+            POSTGRES.start();
+        }
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", POSTGRES::getUsername);
+        registry.add("spring.datasource.password", POSTGRES::getPassword);
+    }
+
+    @AfterAll
+    static void stopDatabase() {
+        if (POSTGRES.isRunning()) {
+            POSTGRES.stop();
+        }
+    }
 
     @Autowired
     private MockMvc mockMvc;
@@ -53,14 +99,39 @@ class EventProcessorIntegrationTest {
     @Autowired
     private WebhookOutboxRepository webhookOutboxRepository;
 
-    @MockitoBean
-    private WebhookClient webhookClient;
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private ApiKeyService apiKeyService;
+
+    @Autowired
+    private EventRepository eventRepository;
+
+    @Autowired
+    private WebhookOutboxDeliveryService webhookOutboxDeliveryService;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    private String rawApiKey;
 
     @BeforeEach
     void cleanUp() {
-        webhookOutboxRepository.deleteAll();
-        ruleEventRepository.deleteAll();
-        ruleRepository.deleteAll();
+        jdbcTemplate.execute("TRUNCATE TABLE rule_action_state, rule_action_windows, "
+            + "webhook_outbox, rule_events, rule_revisions, event_idempotency, events, "
+            + "rules, api_keys, refresh_sessions RESTART IDENTITY CASCADE");
+        rawApiKey = apiKeyService.create("integration", null, null, null).rawKey();
+    }
+
+    private MockHttpServletRequestBuilder eventPost() {
+        return eventPost(rawApiKey);
+    }
+
+    private MockHttpServletRequestBuilder eventPost(String apiKey) {
+        return post("/api/events")
+            .header("X-API-Key", apiKey)
+            .contentType(MediaType.APPLICATION_JSON);
     }
 
     private Rule conditionRule(String name, String eventType, String source, String condition, boolean active) {
@@ -143,19 +214,19 @@ class EventProcessorIntegrationTest {
         aggregateRule("keyed-sum", "transaction", "payment-api", "data.amount >= 0",
             AggregateType.SUM, "data.amount", "data.userId", 1000, 300);
 
-        mockMvc.perform(post("/api/events")
+        mockMvc.perform(eventPost()
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(keyedEventJson("transaction", "payment-api", "alice", 700)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.matched").value(false));
 
-        mockMvc.perform(post("/api/events")
+        mockMvc.perform(eventPost()
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(keyedEventJson("transaction", "payment-api", "bob", 900)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.matched").value(false));
 
-        mockMvc.perform(post("/api/events")
+        mockMvc.perform(eventPost()
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(keyedEventJson("transaction", "payment-api", "alice", 400)))
             .andExpect(status().isOk())
@@ -169,7 +240,7 @@ class EventProcessorIntegrationTest {
         aggregateRule("keyed-missing", "transaction", "payment-api", "data.amount >= 0",
             AggregateType.SUM, "data.amount", "userId", 1, 300);
 
-        mockMvc.perform(post("/api/events")
+        mockMvc.perform(eventPost()
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(eventJson("transaction", "payment-api", 1500, "PH")))
             .andExpect(status().isOk())
@@ -212,7 +283,7 @@ class EventProcessorIntegrationTest {
         aggregateRule("aggregate-" + aggregateType.name().toLowerCase(), "transaction", "payment-api",
             "data.amount >= 1000", aggregateType, "data.amount", 1500, 300);
 
-        mockMvc.perform(post("/api/events")
+        mockMvc.perform(eventPost()
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(eventJson("transaction", "payment-api", 1500, "PH")))
             .andExpect(status().isOk())
@@ -226,7 +297,7 @@ class EventProcessorIntegrationTest {
         aggregateRule("canonical-amount", "transaction", "payment-api",
             "data.amount >= 1000", AggregateType.SUM, "amount", 1500, 300);
 
-        mockMvc.perform(post("/api/events")
+        mockMvc.perform(eventPost()
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(eventJson("transaction", "payment-api", 1500, "PH")))
             .andExpect(status().isOk())
@@ -239,13 +310,13 @@ class EventProcessorIntegrationTest {
         aggregateRule("ordered-count", "transaction", "payment-api",
             "data.amount >= 0", AggregateType.COUNT, null, 2, 300);
 
-        mockMvc.perform(post("/api/events")
+        mockMvc.perform(eventPost()
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(eventJsonAt("transaction", "payment-api", 1, "PH", "2026-07-31T15:35:00Z")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.matched").value(false));
 
-        mockMvc.perform(post("/api/events")
+        mockMvc.perform(eventPost()
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(eventJsonAt("transaction", "payment-api", 1, "PH", "2026-07-31T15:30:00Z")))
             .andExpect(status().isOk())
@@ -280,7 +351,7 @@ class EventProcessorIntegrationTest {
         conditionRule("large-transaction", "transaction", "payment-api",
             "data.amount >= 1000 && data.country == 'PH'", true);
 
-        mockMvc.perform(post("/api/events")
+        mockMvc.perform(eventPost()
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(eventJson("transaction", "payment-api", 1500, "PH")))
             .andExpect(status().isOk())
@@ -295,7 +366,7 @@ class EventProcessorIntegrationTest {
         conditionRule("large-transaction", "transaction", "payment-api",
             "data.amount >= 1000 && data.country == 'PH'", true);
 
-        mockMvc.perform(post("/api/events")
+        mockMvc.perform(eventPost()
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(eventJson("transaction", "payment-api", 500, "PH")))
             .andExpect(status().isOk())
@@ -309,14 +380,14 @@ class EventProcessorIntegrationTest {
             "data.amount >= 1000", AggregateType.SUM, "data.amount", 4000, 300);
 
         // First event: 1500
-        mockMvc.perform(post("/api/events")
+        mockMvc.perform(eventPost()
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(eventJson("transaction", "payment-api", 1500, "PH")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.matched").value(false));
 
         // Second event: 3000 -> cumulative 4500 >= 4000
-        mockMvc.perform(post("/api/events")
+        mockMvc.perform(eventPost()
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(eventJson("transaction", "payment-api", 3000, "PH")))
             .andExpect(status().isOk())
@@ -333,7 +404,7 @@ class EventProcessorIntegrationTest {
         conditionRule("other-source", "transaction", "other-api",
             "data.amount >= 1000", true);
 
-        mockMvc.perform(post("/api/events")
+        mockMvc.perform(eventPost()
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(eventJson("transaction", "payment-api", 9999, "PH")))
             .andExpect(status().isOk())
@@ -356,7 +427,7 @@ class EventProcessorIntegrationTest {
         rule.setActive(true);
         ruleRepository.save(rule);
 
-        mockMvc.perform(post("/api/events")
+        mockMvc.perform(eventPost()
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(eventJson("transaction", "payment-api", 1500, "PH")))
             .andExpect(status().isOk())
@@ -367,7 +438,6 @@ class EventProcessorIntegrationTest {
         WebhookOutbox outbox = webhookOutboxRepository.findAll().getFirst();
         assertThat(outbox.getStatus()).isEqualTo(WebhookOutboxStatus.PENDING);
         assertThat(outbox.getCallbackUrl()).isEqualTo("https://example.com/hooks/events");
-        verify(webhookClient, never()).deliverOnce(eq("https://example.com/hooks/events"), anyMap());
     }
 
     @Test
@@ -383,18 +453,17 @@ class EventProcessorIntegrationTest {
         rule.setActive(true);
         ruleRepository.save(rule);
 
-        mockMvc.perform(post("/api/events")
+        mockMvc.perform(eventPost()
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(eventJson("transaction", "payment-api", 500, "PH")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.matched").value(false));
 
-        verify(webhookClient, never()).deliverOnce(eq("https://example.com/hooks/events"), anyMap());
     }
 
     @Test
     void invalidPayloadReturns400() throws Exception {
-        mockMvc.perform(post("/api/events")
+        mockMvc.perform(eventPost()
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {
@@ -406,11 +475,219 @@ class EventProcessorIntegrationTest {
     }
 
     @Test
+    void missingApiKeyReturns401() throws Exception {
+        mockMvc.perform(post("/api/events")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(eventJson("transaction", "payment-api", 10, "PH")))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void invalidExpiredAndRevokedApiKeysAreRejected() throws Exception {
+        mockMvc.perform(eventPost("tg_invalid")
+                .content(eventJson("transaction", "payment-api", 10, "PH")))
+            .andExpect(status().isUnauthorized());
+
+        var expired = apiKeyService.create("expired", null, null,
+            Instant.now().minusSeconds(60));
+        mockMvc.perform(eventPost(expired.rawKey())
+                .content(eventJson("transaction", "payment-api", 10, "PH")))
+            .andExpect(status().isUnauthorized());
+
+        var revoked = apiKeyService.create("revoked", null, null, null);
+        apiKeyService.revoke(revoked.key().getId());
+        mockMvc.perform(eventPost(revoked.rawKey())
+                .content(eventJson("transaction", "payment-api", 10, "PH")))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void apiKeyScopeRejectsOutOfScopeEvents() throws Exception {
+        var scoped = apiKeyService.create("scoped", List.of("shipment"), List.of("warehouse"), null);
+
+        mockMvc.perform(eventPost(scoped.rawKey())
+                .content(eventJson("transaction", "payment-api", 10, "PH")))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser
+    void invalidAggregateRuleIsRejectedBeforePersistence() throws Exception {
+        mockMvc.perform(post("/api/rules")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {
+                      "name": "invalid-aggregate",
+                      "ruleType": "AGGREGATE",
+                      "action": "LOG",
+                      "eventType": "transaction",
+                      "source": "payment-api",
+                      "conditionScript": "data.amount >= 0",
+                      "windowSeconds": 0,
+                      "aggType": "SUM",
+                      "threshold": 10,
+                      "active": true
+                    }
+                    """))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").value("Aggregate windowSeconds must be positive"));
+
+        assertThat(ruleRepository.findByName("invalid-aggregate")).isEmpty();
+    }
+
+    @Test
+    @WithMockUser
+    void invalidRuleCannotBeActivated() throws Exception {
+        Rule invalid = aggregateRule("invalid-activation", "transaction", "payment-api",
+            "data.amount >= 0", AggregateType.SUM, null, 10, 0);
+        invalid.setActive(false);
+        ruleRepository.save(invalid);
+
+        mockMvc.perform(patch("/api/rules/{id}/toggle", invalid.getId()))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").value("Aggregate windowSeconds must be positive"));
+
+        assertThat(ruleRepository.findById(invalid.getId()).orElseThrow().isActive()).isFalse();
+    }
+
+    @Test
+    void accessAndRefreshTokensAreSeparatedAndLogoutRevokesRefreshSession() throws Exception {
+        var login = mockMvc.perform(post("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"username":"admin","password":"integration-admin-password"}
+                    """))
+            .andExpect(status().isOk())
+            .andReturn();
+        JsonNode loginJson = objectMapper.readTree(login.getResponse().getContentAsString());
+        String accessToken = loginJson.get("accessToken").asText();
+        String refreshToken = loginJson.get("refreshToken").asText();
+
+        mockMvc.perform(get("/api/rules")
+                .header("Authorization", "Bearer " + accessToken))
+            .andExpect(status().isOk());
+        mockMvc.perform(get("/api/rules")
+                .header("Authorization", "Bearer " + refreshToken))
+            .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"refreshToken\":\"" + accessToken + "\"}"))
+            .andExpect(status().isUnauthorized());
+
+        var rotated = mockMvc.perform(post("/api/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"refreshToken\":\"" + refreshToken + "\"}"))
+            .andExpect(status().isOk())
+            .andReturn();
+        String rotatedRefresh = objectMapper.readTree(rotated.getResponse().getContentAsString())
+            .get("refreshToken").asText();
+
+        mockMvc.perform(post("/api/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"refreshToken\":\"" + refreshToken + "\"}"))
+            .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/auth/logout")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"refreshToken\":\"" + rotatedRefresh + "\"}"))
+            .andExpect(status().isNoContent());
+        mockMvc.perform(post("/api/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"refreshToken\":\"" + rotatedRefresh + "\"}"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void idempotencyReplaysAndConflictsWithoutDuplicatingEvents() throws Exception {
+        String idempotencyKey = "integration-idempotency-key";
+        String firstPayload = eventJson("transaction", "payment-api", 700, "PH");
+        String changedPayload = eventJson("transaction", "payment-api", 701, "PH");
+
+        mockMvc.perform(eventPost().header("Idempotency-Key", idempotencyKey)
+                .content(firstPayload))
+            .andExpect(status().isOk());
+        mockMvc.perform(eventPost().header("Idempotency-Key", idempotencyKey)
+                .content(firstPayload))
+            .andExpect(status().isOk());
+        mockMvc.perform(eventPost().header("Idempotency-Key", idempotencyKey)
+                .content(changedPayload))
+            .andExpect(status().isConflict());
+
+        assertThat(eventRepository.count()).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentIdempotentIngestionCreatesOneEvent() throws Exception {
+        String idempotencyKey = "concurrent-idempotency-key";
+        String payload = eventJson("transaction", "payment-api", 900, "PH");
+        ExecutorService executor = Executors.newFixedThreadPool(8);
+        List<Future<Integer>> futures = new ArrayList<>();
+        try {
+            for (int i = 0; i < 8; i++) {
+                futures.add(executor.submit(() -> mockMvc.perform(
+                    eventPost().header("Idempotency-Key", idempotencyKey).content(payload))
+                    .andReturn().getResponse().getStatus()));
+            }
+
+            List<Integer> statuses = new ArrayList<>();
+            for (Future<Integer> future : futures) {
+                statuses.add(future.get(10, TimeUnit.SECONDS));
+            }
+            assertThat(statuses).contains(200);
+            assertThat(statuses).allMatch(value -> value == 200 || value == 409);
+            assertThat(eventRepository.count()).isEqualTo(1);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void webhookLeaseRecoveryRejectsStaleFinalizationAndSchedulesRetry() throws Exception {
+        Rule rule = new Rule();
+        rule.setName("lease-rule");
+        rule.setRuleType(RuleType.CONDITION);
+        rule.setAction(RuleAction.WEBHOOK);
+        rule.setCallbackUrl("https://example.com/hooks/leases");
+        rule.setEventType("transaction");
+        rule.setSource("payment-api");
+        rule.setConditionScript("data.amount >= 1000");
+        rule.setActive(true);
+        ruleRepository.save(rule);
+
+        mockMvc.perform(eventPost().content(eventJson("transaction", "payment-api", 1500, "PH")))
+            .andExpect(status().isOk());
+
+        Instant firstClaimAt = Instant.now();
+        List<WebhookDeliveryAttempt> firstClaims = webhookOutboxDeliveryService
+            .claimBatch(firstClaimAt, 10, 60_000);
+        assertThat(firstClaims).hasSize(1);
+        WebhookDeliveryAttempt first = firstClaims.getFirst();
+
+        assertThat(webhookOutboxDeliveryService.claimBatch(firstClaimAt, 10, 60_000)).isEmpty();
+
+        Instant recoveryAt = firstClaimAt.plusSeconds(61);
+        List<WebhookDeliveryAttempt> recoveredClaims = webhookOutboxDeliveryService
+            .claimBatch(recoveryAt, 10, 60_000);
+        assertThat(recoveredClaims).hasSize(1);
+        WebhookDeliveryAttempt recovered = recoveredClaims.getFirst();
+        assertThat(recovered.leaseToken()).isNotEqualTo(first.leaseToken());
+
+        WebhookDeliveryResult failure = WebhookDeliveryResult.failure(true, 503,
+            "receiver unavailable", 5);
+        assertThat(webhookOutboxDeliveryService.markDelivered(first,
+            WebhookDeliveryResult.success(200, 5), recoveryAt)).isFalse();
+        assertThat(webhookOutboxDeliveryService.markFailed(recovered, failure, recoveryAt,
+            3, 100, 1000)).isTrue();
+        WebhookOutbox outbox = webhookOutboxRepository.findById(recovered.outboxId()).orElseThrow();
+        assertThat(outbox.getStatus()).isEqualTo(WebhookOutboxStatus.RETRY_SCHEDULED);
+        assertThat(outbox.getNextAttemptAt()).isAfter(recoveryAt);
+    }
+
+    @Test
     void inactiveRuleDoesNotMatch() throws Exception {
         conditionRule("inactive-rule", "transaction", "payment-api",
             "data.amount >= 1", false);
 
-        mockMvc.perform(post("/api/events")
+        mockMvc.perform(eventPost()
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(eventJson("transaction", "payment-api", 9999, "PH")))
             .andExpect(status().isOk())

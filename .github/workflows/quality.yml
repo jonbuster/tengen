@@ -1,0 +1,93 @@
+name: Quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tengen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Run backend unit, integration, migration, and load tests
+        run: ./mvnw -B -q test
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Start disposable Compose stack
+        working-directory: .
+        env:
+          ADMIN_PASSWORD: e2e-password
+          CORS_ALLOWED_ORIGINS: http://localhost:3000
+          WEBHOOK_WORKER_ENABLED: "false"
+        run: docker compose -p tengen-ci -f tengen/docker-compose.yml up --build -d
+      - name: Wait for backend readiness
+        working-directory: .
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:8080/actuator/health/readiness; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose -p tengen-ci -f tengen/docker-compose.yml logs
+          exit 1
+      - name: Run Playwright smoke tests
+        env:
+          E2E_ADMIN_PASSWORD: e2e-password
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
+        run: npm run test:e2e
+      - name: Tear down disposable stack
+        if: always()
+        working-directory: .
+        run: docker compose -p tengen-ci -f tengen/docker-compose.yml down -v
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high

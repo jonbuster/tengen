@@ -11,8 +11,6 @@ export const api = axios.create({
   },
 });
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
-
 /** Extract a readable message from an axios error. */
 export function errorMessage(err: unknown): string {
   if (axios.isAxiosError(err)) {

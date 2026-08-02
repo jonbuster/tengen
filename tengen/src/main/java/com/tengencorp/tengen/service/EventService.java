@@ -22,7 +22,10 @@ import com.tengencorp.tengen.repository.EventIdempotencyRepository;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Value;
 import tools.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -49,13 +52,20 @@ public class EventService {
     private final EventIdempotencyRepository eventIdempotencyRepository;
     private final EventRequestHasher eventRequestHasher;
     private final ObjectMapper objectMapper;
+    private final Counter acceptedEvents;
+    private final Counter matchedEvents;
+    private final Counter replayedEvents;
+    private final long maxFutureSkewSeconds;
 
     public EventService(EventRepository eventRepository, ApiKeyRepository apiKeyRepository,
                         RuleRepository ruleRepository, RuleEngine ruleEngine,
                         WebhookOutboxService webhookOutboxService,
                         WebhookCooldownService webhookCooldownService, ApiKeyService apiKeyService,
                         EventIdempotencyRepository eventIdempotencyRepository,
-                        EventRequestHasher eventRequestHasher, ObjectMapper objectMapper) {
+                        EventRequestHasher eventRequestHasher, ObjectMapper objectMapper,
+                        MeterRegistry meterRegistry,
+                        @Value("${tengen.ingestion.max-future-skew-seconds:300}")
+                        long maxFutureSkewSeconds) {
         this.eventRepository = eventRepository;
         this.apiKeyRepository = apiKeyRepository;
         this.ruleRepository = ruleRepository;
@@ -66,6 +76,10 @@ public class EventService {
         this.eventIdempotencyRepository = eventIdempotencyRepository;
         this.eventRequestHasher = eventRequestHasher;
         this.objectMapper = objectMapper;
+        this.acceptedEvents = meterRegistry.counter("tengen.ingestion.events", "result", "accepted");
+        this.matchedEvents = meterRegistry.counter("tengen.ingestion.events", "result", "matched");
+        this.replayedEvents = meterRegistry.counter("tengen.ingestion.events", "result", "replayed");
+        this.maxFutureSkewSeconds = maxFutureSkewSeconds;
     }
 
     @Transactional
@@ -82,6 +96,11 @@ public class EventService {
     public EventResponse process(EventRequest request, Long apiKeyId, String idempotencyKey) {
         if (apiKeyId == null) {
             throw new AccessDeniedException("API key is required");
+        }
+        if (request.timestamp() != null
+            && request.timestamp().isAfter(Instant.now().plusSeconds(maxFutureSkewSeconds))) {
+            throw new IllegalArgumentException(
+                "Event timestamp is too far in the future");
         }
 
         ApiKey apiKey = apiKeyRepository.findById(apiKeyId)
@@ -117,6 +136,7 @@ public class EventService {
                     "Idempotency-Key has already been used with a different event payload");
             }
             if (idempotency.getStatus() == EventIdempotencyStatus.COMPLETED) {
+                replayedEvents.increment();
                 return replayResponse(idempotency);
             }
             throw new IdempotencyConflictException(
@@ -137,7 +157,9 @@ public class EventService {
             apiKey);
         event = eventRepository.save(event);
 
-        List<Rule> activeRules = ruleRepository.findByActiveTrueAndArchivedAtIsNullOrderByNameAsc();
+        List<Rule> activeRules = ruleRepository
+            .findByActiveTrueAndArchivedAtIsNullAndEventTypeAndSourceOrderByNameAsc(
+                event.getType(), event.getSource());
         List<String> matchedRuleNames = new ArrayList<>();
         List<String> queuedRuleNames = new ArrayList<>();
         List<String> suppressedRuleNames = new ArrayList<>();
@@ -183,6 +205,10 @@ public class EventService {
         }
 
         boolean matched = !matchedRuleNames.isEmpty();
+        acceptedEvents.increment();
+        if (matched) {
+            matchedEvents.increment();
+        }
         return new ProcessingResult(
             event,
             new EventResponse(

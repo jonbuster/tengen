@@ -73,11 +73,13 @@ export default function RulesPage() {
       width: 120,
       renderCell: (params) => {
         const archived = Boolean(params.row.archivedAt);
+        const invalid = params.row.validationStatus === "INVALID";
         return (
           <Chip
-            label={archived ? "Archived" : params.value ? "Active" : "Inactive"}
-            color={archived ? "warning" : params.value ? "success" : "default"}
+            label={invalid ? "Invalid" : archived ? "Archived" : params.value ? "Active" : "Inactive"}
+            color={invalid ? "error" : archived ? "warning" : params.value ? "success" : "default"}
             size="small"
+            title={params.row.validationError ?? undefined}
           />
         );
       },

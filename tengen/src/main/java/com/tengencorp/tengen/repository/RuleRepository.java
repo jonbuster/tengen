@@ -15,6 +15,9 @@ public interface RuleRepository extends JpaRepository<Rule, Long> {
 
     List<Rule> findByActiveTrueAndArchivedAtIsNullOrderByNameAsc();
 
+    List<Rule> findByActiveTrueAndArchivedAtIsNullAndEventTypeAndSourceOrderByNameAsc(
+        String eventType, String source);
+
     List<Rule> findByArchivedAtIsNullOrderByNameAsc();
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

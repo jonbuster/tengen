@@ -15,7 +15,9 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const hasSession = Boolean(req.cookies.get("access_token")?.value);
+  const hasSession = Boolean(
+    req.cookies.get("access_token")?.value || req.cookies.get("refresh_token")?.value,
+  );
   if (!hasSession) {
     const loginUrl = req.nextUrl.clone();
     loginUrl.pathname = "/login";

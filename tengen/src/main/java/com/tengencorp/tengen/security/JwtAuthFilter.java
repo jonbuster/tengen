@@ -32,7 +32,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return "/api/events".equals(request.getServletPath());
+        String requestUri = request.getRequestURI();
+        String contextPath = request.getContextPath();
+        String path = contextPath == null || contextPath.isEmpty()
+            ? requestUri : requestUri.substring(contextPath.length());
+        return "/api/events".equals(path);
     }
 
     @Override
@@ -42,7 +46,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);
             try {
-                String username = jwtService.validate(token);
+                String username = jwtService.validateAccess(token).subject();
                 var authentication = new UsernamePasswordAuthenticationToken(
                     username, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));

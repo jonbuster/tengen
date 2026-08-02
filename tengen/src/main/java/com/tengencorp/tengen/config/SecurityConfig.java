@@ -42,10 +42,12 @@ public class SecurityConfig {
                     response.sendError(HttpStatus.FORBIDDEN.value(), "Forbidden")))
             .authorizeHttpRequests(auth -> auth
                 // Admin APIs use JWT; event ingestion is API-key-only.
-                .requestMatchers("/api/auth/login", "/api/auth/refresh").permitAll()
+                .requestMatchers("/api/auth/login", "/api/auth/refresh", "/api/auth/logout").permitAll()
+                .requestMatchers("/actuator/health/liveness", "/actuator/health/readiness").permitAll()
+                .requestMatchers("/actuator/prometheus").authenticated()
                 .requestMatchers("/api/rules/**", "/api/keys/**", "/api/webhook-deliveries/**").authenticated()
                 .requestMatchers("/api/events").authenticated()
-                .anyRequest().permitAll())
+                .anyRequest().denyAll())
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(apiKeyAuthFilter, JwtAuthFilter.class);
         return http.build();

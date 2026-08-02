@@ -16,6 +16,7 @@ public class AviatorConfig {
     @Bean
     public AviatorEvaluatorInstance aviatorEvaluator() {
         AviatorEvaluatorInstance instance = AviatorEvaluator.getInstance();
+        instance.enableSandboxMode();
         // Evaluate scripts at call time so admin edits take effect without restart.
         instance.setCachedExpressionByDefault(true);
         return instance;

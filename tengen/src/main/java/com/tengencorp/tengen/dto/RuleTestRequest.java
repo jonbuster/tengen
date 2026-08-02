@@ -2,6 +2,7 @@ package com.tengencorp.tengen.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
 /**
  * Request DTO for POST /api/rules/test.
@@ -18,5 +19,6 @@ public record RuleTestRequest(
         Long ruleId,
 
         @NotBlank(message = "eventJson is required")
+        @Size(max = 1048576, message = "eventJson must be at most 1048576 characters")
         String eventJson) {
 }

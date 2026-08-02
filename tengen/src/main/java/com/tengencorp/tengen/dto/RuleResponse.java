@@ -5,6 +5,7 @@ import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.entity.RuleAction;
 import com.tengencorp.tengen.entity.RuleType;
 import com.tengencorp.tengen.entity.TriggerMode;
+import com.tengencorp.tengen.entity.RuleValidationStatus;
 
 import java.time.Instant;
 
@@ -28,6 +29,8 @@ public record RuleResponse(
         String groupBy,
         Double threshold,
         boolean active,
+        RuleValidationStatus validationStatus,
+        String validationError,
         int revision,
         Instant archivedAt,
         Instant createdAt,
@@ -51,6 +54,8 @@ public record RuleResponse(
             rule.getGroupBy(),
             rule.getThreshold(),
             rule.isActive(),
+            rule.getValidationStatus(),
+            rule.getValidationError(),
             rule.getEffectiveRevision(),
             rule.getArchivedAt(),
             rule.getCreatedAt(),

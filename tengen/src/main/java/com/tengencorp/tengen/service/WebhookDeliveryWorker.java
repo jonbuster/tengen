@@ -9,6 +9,8 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.List;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 
 /** Polls committed outbox rows and performs one delivery attempt per lease. */
 @Service
@@ -23,13 +25,18 @@ public class WebhookDeliveryWorker {
     private final WebhookOutboxDeliveryService deliveryService;
     private final WebhookClient webhookClient;
     private final WebhookDeliveryProperties properties;
+    private final Counter delivered;
+    private final Counter failed;
 
     public WebhookDeliveryWorker(WebhookOutboxDeliveryService deliveryService,
                                  WebhookClient webhookClient,
-                                 WebhookDeliveryProperties properties) {
+                                 WebhookDeliveryProperties properties,
+                                 MeterRegistry meterRegistry) {
         this.deliveryService = deliveryService;
         this.webhookClient = webhookClient;
         this.properties = properties;
+        this.delivered = meterRegistry.counter("tengen.webhook.attempts", "result", "delivered");
+        this.failed = meterRegistry.counter("tengen.webhook.attempts", "result", "failed");
     }
 
     @Scheduled(
@@ -65,12 +72,13 @@ public class WebhookDeliveryWorker {
 
     private void deliverOne(WebhookDeliveryAttempt attempt) {
         WebhookDeliveryResult result = webhookClient.deliverOnce(
-            attempt.callbackUrl(), attempt.payload());
+            attempt.callbackUrl(), attempt.payload(), attempt.outboxId(), attempt.createdAt());
         Instant completedAt = Instant.now();
 
         if (result.successful()) {
             boolean finalized = deliveryService.markDelivered(attempt, result, completedAt);
             if (finalized) {
+                delivered.increment();
                 log.info("Webhook outbox delivery succeeded: outboxId={}, rule={}, attempt={}, durationMs={}",
                     attempt.outboxId(), attempt.ruleName(), attempt.attemptNumber(), result.durationMs());
             }
@@ -85,6 +93,7 @@ public class WebhookDeliveryWorker {
             properties.getBaseDelayMs(),
             properties.getMaxDelayMs());
         if (finalized) {
+            failed.increment();
             log.warn("Webhook outbox delivery failed: outboxId={}, rule={}, attempt={}, retryable={}, status={}",
                 attempt.outboxId(), attempt.ruleName(), attempt.attemptNumber(),
                 result.retryable(), result.statusCode());
