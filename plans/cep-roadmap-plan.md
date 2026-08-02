@@ -25,8 +25,8 @@ Implemented the first correctness-focused slice without changing the public API 
 | Late events can include future events in windows | Implemented |
 | Rule testing omits the candidate event from aggregates | Implemented |
 | Keyed/grouped aggregates | Implemented |
-| Trigger lifecycle and alert deduplication | Later feature |
-| Transactional outbox and async actions | Later feature |
+| Trigger lifecycle and alert deduplication | Cooldown implemented; `EDGE` and once-per-window remain later features |
+| Transactional outbox and async actions | Synchronous webhook delivery with retries implemented; outbox/async delivery remains later |
 
 ## Implemented: Keyed Aggregates
 
@@ -113,12 +113,33 @@ Bob:   900             -> no match
 
 The feature is complete when an admin can create a rule grouped by `data.userId`, ingest events for at least two users, and observe that only the user whose own aggregate crosses the threshold is matched. Existing rules without `groupBy` must continue behaving as they do today.
 
+## Implemented: CEP Baseline and Supporting Features
+
+The original event processor and frontend migration plans also have these implemented capabilities:
+
+- JSON event ingestion through `POST /api/events` with persisted events.
+- CONDITION rules and windowed AGGREGATE rules using `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX`.
+- Synchronous best-effort webhook delivery with up to three attempts and short backoff.
+- REST rule administration, rule testing, JWT-protected admin access, and the Next.js/MUI admin UI.
+- API-key generation, hashed storage, revocation, and event-to-key association through `X-API-Key`.
+
+## Implemented: Webhook Cooldown
+
+Implemented the first trigger-lifecycle slice for webhook actions:
+
+- Rules accept an optional non-negative `cooldownSeconds` value.
+- Cooldown state is durable in `rule_action_state` and scoped by rule plus aggregate group key.
+- Matched rules remain matched when webhook delivery is suppressed.
+- Successful deliveries start or refresh cooldown; failed deliveries leave it available for retry.
+- Event responses include additive `suppressedRules` details.
+- Rule testing does not deliver webhooks or mutate cooldown state.
+
 ## Later Assessment Roadmap
 
-1. Trigger modes such as `EDGE`, cooldown, and once-per-window.
+1. Trigger modes such as `EDGE` and once-per-window.
 2. Event idempotency keys.
 3. Transactional outbox with asynchronous webhook delivery and retries.
-4. Rule validation and lifecycle/versioning.
+4. Rule lifecycle/versioning and audit history; basic request validation and active toggling are already implemented.
 5. Sequence and absence patterns.
-6. Watermarks, allowed lateness, and late-event handling.
+6. Watermarks and allowed lateness; event-time windows and future-event exclusion are already implemented.
 7. Broker connectors and replay/backfill.

@@ -6,12 +6,15 @@ import {
   Checkbox,
   FormControlLabel,
   Grid,
+  InputAdornment,
   MenuItem,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from "@mui/material";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { useState } from "react";
 import { ConditionBuilder } from "@/components/ConditionBuilder";
 import {
@@ -25,6 +28,14 @@ import { Rule, RuleAction, RuleRequest, RuleType } from "@/lib/types";
 const RULE_TYPES: RuleType[] = ["CONDITION", "AGGREGATE"];
 const ACTIONS: RuleAction[] = ["LOG", "WEBHOOK"];
 const AGG_TYPES = ["COUNT", "SUM", "AVG", "MIN", "MAX"];
+
+function FieldInfo({ title }: { title: string }) {
+  return (
+    <Tooltip title={title} arrow>
+      <InfoOutlinedIcon fontSize="small" sx={{ color: "text.secondary" }} />
+    </Tooltip>
+  );
+}
 
 interface RuleFormProps {
   initial?: Rule;
@@ -45,6 +56,10 @@ function toRequest(
     ruleType,
     action,
     callbackUrl: action === "WEBHOOK" ? values.callbackUrl || null : null,
+    cooldownSeconds:
+      action === "WEBHOOK" && values.cooldownSeconds !== ""
+        ? Number(values.cooldownSeconds)
+        : null,
     eventType: values.eventType,
     source: values.source,
     conditionScript:
@@ -64,6 +79,7 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
     ruleType: initial?.ruleType ?? "CONDITION",
     action: initial?.action ?? "LOG",
     callbackUrl: initial?.callbackUrl ?? "",
+    cooldownSeconds: initial?.cooldownSeconds?.toString() ?? "",
     eventType: initial?.eventType ?? "",
     source: initial?.source ?? "",
     conditionScript: initial?.conditionScript ?? "",
@@ -132,9 +148,28 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
           </TextField>
         </Grid>
         {isWebhook && (
-          <Grid item xs={12} sm={6}>
-            <TextField label="Callback URL" value={values.callbackUrl} onChange={set("callbackUrl")} fullWidth />
-          </Grid>
+          <>
+            <Grid item xs={12} sm={6}>
+              <TextField label="Callback URL" value={values.callbackUrl} onChange={set("callbackUrl")} fullWidth />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Cooldown (seconds)"
+                type="number"
+                inputProps={{ min: 0 }}
+                value={values.cooldownSeconds}
+                onChange={set("cooldownSeconds")}
+                fullWidth
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <FieldInfo title="Controls repeated webhook delivery, not rule detection. Leave blank or use 0 to disable." />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+          </>
         )}
         <Grid item xs={12} sm={6}>
           <TextField label="Event Type" value={values.eventType} onChange={set("eventType")} fullWidth required />
@@ -159,11 +194,17 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
             </Grid>
             <Grid item xs={12} sm={4}>
               <TextField
-                label="Aggregate Field (e.g. data.amount)"
+                label="Aggregate field"
                 value={values.aggField}
                 onChange={set("aggField")}
                 fullWidth
-                helperText="Use amount or data.amount; both refer to the event data field."
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <FieldInfo title="Use amount or data.amount." />
+                    </InputAdornment>
+                  ),
+                }}
               />
             </Grid>
             <Grid item xs={12} sm={4}>
@@ -174,11 +215,17 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
             </Grid>
             <Grid item xs={12} sm={4}>
               <TextField
-                label="Group by field (optional)"
+                label="Group by field"
                 value={values.groupBy}
                 onChange={set("groupBy")}
                 fullWidth
-                helperText="Use data.userId or userId. Leave blank for a global aggregate."
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <FieldInfo title="Optional. Use data.userId or userId. Leave blank for a global aggregate." />
+                    </InputAdornment>
+                  ),
+                }}
               />
             </Grid>
           </Grid>

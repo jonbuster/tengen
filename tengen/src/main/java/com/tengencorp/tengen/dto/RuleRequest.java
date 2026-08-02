@@ -7,6 +7,7 @@ import com.tengencorp.tengen.entity.RuleType;
 import com.tengencorp.tengen.helper.AggregateFieldPath;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -27,6 +28,9 @@ public record RuleRequest(
 
         @Size(max = 500, message = "Callback URL must be at most 500 characters")
         String callbackUrl,
+
+        @PositiveOrZero(message = "Cooldown must be zero or greater")
+        Integer cooldownSeconds,
 
         @NotBlank(message = "Event type is required")
         @Size(max = 100, message = "Event type must be at most 100 characters")
@@ -64,6 +68,7 @@ public record RuleRequest(
         rule.setRuleType(ruleType);
         rule.setAction(action);
         rule.setCallbackUrl(action == RuleAction.WEBHOOK ? callbackUrl : null);
+        rule.setCooldownSeconds(action == RuleAction.WEBHOOK ? cooldownSeconds : null);
         rule.setEventType(eventType);
         rule.setSource(source);
         rule.setConditionScript(conditionScript);

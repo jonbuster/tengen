@@ -13,15 +13,17 @@ import java.util.Map;
  * @param matched    whether at least one rule matched
  * @param rules      names of matched rules
  * @param aggregates per-rule windowed aggregate results (AGGREGATE matches only)
+ * @param suppressedRules matched webhook rules whose delivery was suppressed by cooldown
  */
 public record EventResponse(
         Object event,
         String status,
         boolean matched,
         List<String> rules,
-        Map<String, AggregateResult> aggregates) {
+        Map<String, AggregateResult> aggregates,
+        List<String> suppressedRules) {
 
     public static EventResponse noMatch(Object event) {
-        return new EventResponse(event, "accepted", false, List.of(), Map.of());
+        return new EventResponse(event, "accepted", false, List.of(), Map.of(), List.of());
     }
 }

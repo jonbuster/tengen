@@ -8,6 +8,7 @@ export interface Rule {
   ruleType: RuleType;
   action: RuleAction;
   callbackUrl: string | null;
+  cooldownSeconds: number | null;
   eventType: string;
   source: string;
   conditionScript: string;
@@ -26,6 +27,7 @@ export interface RuleRequest {
   ruleType: RuleType;
   action: RuleAction;
   callbackUrl?: string | null;
+  cooldownSeconds?: number | null;
   eventType: string;
   source: string;
   conditionScript: string;
@@ -65,6 +67,23 @@ export interface TestResult {
   event: unknown;
   results: RuleResult[] | null;
   anyMatched: boolean | null;
+}
+
+export interface AggregateResult {
+  function: string;
+  value: number;
+  threshold: number;
+  windowSeconds: number;
+  groupKey: string | null;
+}
+
+export interface EventResponse {
+  event: unknown;
+  status: string;
+  matched: boolean;
+  rules: string[];
+  aggregates: Record<string, AggregateResult>;
+  suppressedRules: string[];
 }
 
 export interface ApiKey {

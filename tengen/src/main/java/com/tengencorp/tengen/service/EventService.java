@@ -38,14 +38,17 @@ public class EventService {
     private final RuleRepository ruleRepository;
     private final RuleEngine ruleEngine;
     private final WebhookClient webhookClient;
+    private final WebhookCooldownService webhookCooldownService;
 
     public EventService(EventRepository eventRepository, ApiKeyRepository apiKeyRepository,
-                        RuleRepository ruleRepository, RuleEngine ruleEngine, WebhookClient webhookClient) {
+                        RuleRepository ruleRepository, RuleEngine ruleEngine, WebhookClient webhookClient,
+                        WebhookCooldownService webhookCooldownService) {
         this.eventRepository = eventRepository;
         this.apiKeyRepository = apiKeyRepository;
         this.ruleRepository = ruleRepository;
         this.ruleEngine = ruleEngine;
         this.webhookClient = webhookClient;
+        this.webhookCooldownService = webhookCooldownService;
     }
 
     @Transactional
@@ -62,6 +65,7 @@ public class EventService {
 
         List<Rule> activeRules = ruleRepository.findByActiveTrueOrderByNameAsc();
         List<String> matchedRuleNames = new ArrayList<>();
+        List<String> suppressedRuleNames = new ArrayList<>();
         Map<String, AggregateResult> aggregates = new LinkedHashMap<>();
 
         for (Rule rule : activeRules) {
@@ -86,15 +90,17 @@ public class EventService {
             }
 
             if (rule.getAction() == RuleAction.WEBHOOK && rule.getCallbackUrl() != null) {
-                dispatchWebhook(rule, request, aggregateResult);
+                if (dispatchWebhook(rule, request, aggregateResult, evaluation.groupKey())) {
+                    suppressedRuleNames.add(rule.getName());
+                }
             }
         }
 
         boolean matched = !matchedRuleNames.isEmpty();
-        return new EventResponse(request, "accepted", matched, matchedRuleNames, aggregates);
+        return new EventResponse(request, "accepted", matched, matchedRuleNames, aggregates, suppressedRuleNames);
     }
 
-    private void dispatchWebhook(Rule rule, EventRequest request, AggregateResult aggregateResult) {
+    private boolean dispatchWebhook(Rule rule, EventRequest request, AggregateResult aggregateResult, String groupKey) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("event", request);
         payload.put("status", "accepted");
@@ -106,9 +112,29 @@ public class EventService {
         }
         payload.put("aggregates", aggMap);
 
+        if (rule.getCooldownSeconds() != null && rule.getCooldownSeconds() > 0) {
+            var state = webhookCooldownService.lockState(rule, groupKey);
+            Instant now = Instant.now();
+            if (webhookCooldownService.isSuppressed(state, rule.getCooldownSeconds(), now)) {
+                return true;
+            }
+
+            boolean delivered = deliverWebhook(rule, payload);
+            if (delivered) {
+                webhookCooldownService.recordSuccessfulDelivery(state, Instant.now());
+            }
+            return false;
+        }
+
+        deliverWebhook(rule, payload);
+        return false;
+    }
+
+    private boolean deliverWebhook(Rule rule, Map<String, Object> payload) {
         boolean delivered = webhookClient.deliver(rule.getCallbackUrl(), payload);
         if (!delivered) {
             log.warn("Webhook for rule [{}] could not be delivered to {}", rule.getName(), rule.getCallbackUrl());
         }
+        return delivered;
     }
 }

@@ -42,6 +42,9 @@ public class Rule {
     @Column(name = "callback_url", columnDefinition = "text")
     private String callbackUrl;
 
+    @Column(name = "cooldown_seconds")
+    private Integer cooldownSeconds;
+
     @Column(name = "event_type", nullable = false, length = 100)
     private String eventType;
 

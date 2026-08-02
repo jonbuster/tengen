@@ -1,16 +1,32 @@
-# Tengen — Complex Event Processor & Admin Console
+# Tengen — Complex Event Processing Webapp
 
-Rule-based event processing with a **Spring Boot 4 (Java 21)** API and a **Next.js 15 + MUI 6** admin SPA.
+Tengen is a rule-driven Complex Event Processing web application for ingesting JSON events, evaluating declarative conditions and time-windowed aggregates, grouping events by business keys, and triggering actions such as webhooks.
 
-Ingest events via a simple REST endpoint, evaluate them against Aviator-powered rules, and manage everything from a modern web console.
+The backend is built with **Spring Boot 4.1**, **Java 21**, **Spring Data JPA**, and **PostgreSQL 17**. The administration console is built with **Next.js 15**, **React 19**, **MUI 6**, and **TanStack Query**. Rules use **Aviator** expressions for condition evaluation.
+
+Its architecture applies core CEP patterns found in platforms such as Esper, Siddhi, and Apache Flink, while providing a focused REST API and web-based administration console for rules, testing, event ingestion, and API keys.
 
 ## Features
 
-- **Rule Engine** — define event rules with Aviator expressions; supports aggregates, webhook actions, and per-rule evaluation
-- **Event Ingestion** — POST events to `/api/events` with a scoped `X-API-Key` header
-- **Admin Console** — full CRUD for rules, a live rule tester, and API key management
+- **Rule Engine** — define CONDITION and AGGREGATE rules with Aviator expressions
+- **Windowed Aggregates** — `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX` with event-time boundaries
+- **Keyed Aggregates** — maintain independent windows using fields such as `data.userId`
+- **Webhook Actions** — synchronous best-effort delivery with up to three attempts and short backoff
+- **Webhook Cooldown** — durable global and keyed cooldown state; suppressed matches remain visible in `suppressedRules`
+- **Event Ingestion** — POST events to `/api/events` with an `X-API-Key` header
+- **Admin Console** — full CRUD for rules, a visual condition builder, rule tester, and API key management
 - **JWT Auth** — access + refresh tokens stored in **httpOnly cookies**; the browser never sees a JWT
-- **Secure by Default** — server-side token refresh, BCrypt-hashed admin credentials, revocable API keys
+- **Secure by Default** — server-side token refresh, BCrypt-hashed admin credentials, hashed and revocable API keys
+
+## CEP Capabilities
+
+- Rules can match on event type, source, and Aviator conditions.
+- Aggregate rules support global or grouped windows with `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX`.
+- Aggregate windows use event time with an exclusive lower boundary and inclusive current-event boundary.
+- Rule testing includes the candidate event in aggregate calculations without persisting it or triggering webhooks.
+- Webhook cooldowns use processing time and are scoped by rule for global rules or by rule plus group key for keyed rules.
+- Successful webhook delivery starts or refreshes cooldown; failed delivery leaves the cooldown available for retry.
+- A matched rule remains matched when its webhook is suppressed, and the response identifies it through `suppressedRules`.
 
 ## Tech Stack
 
@@ -40,7 +56,7 @@ Ingest events via a simple REST endpoint, evaluate them against Aviator-powered 
 - **Backend** (`tengen/`) — Spring Boot REST API.
   - `/api/auth/login`, `/api/auth/refresh` — JWT auth (access 15 min, refresh 7 days)
   - `/api/rules/**`, `/api/keys/**` — JWT-protected admin API
-  - `/api/events` — event ingestion, authenticated via `X-API-Key`
+  - `/api/events` — event ingestion, with optional `X-API-Key` association
 - **Database** — PostgreSQL 17, managed by Docker Compose.
 
 ## Quick Start (Development)
@@ -119,7 +135,21 @@ curl -X POST http://localhost:8080/api/events \
   -d '{"type":"transaction","source":"payment-api","data":{"amount":2500,"country":"PH"}}'
 ```
 
-Keys can be scoped to allowed event types / sources and revoked — revocation takes effect immediately.
+Keys are hashed at rest, shown only once at creation, associated with ingested events, and can be revoked immediately.
+
+## CEP Roadmap
+
+Implemented foundations include event ingestion, configurable rule evaluation, keyed aggregates, rule testing, synchronous webhook actions, and durable webhook cooldown handling.
+
+Planned CEP capabilities include:
+
+- EDGE and once-per-window trigger modes
+- Event idempotency keys
+- Transactional outbox and asynchronous delivery
+- Rule versioning and audit history
+- Sequence and absence patterns
+- Watermarks and allowed lateness
+- Broker connectors and replay/backfill
 
 ## License
 
