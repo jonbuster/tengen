@@ -61,16 +61,18 @@ public class RuleEngine {
     private RuleEvaluation evaluateInternal(Event event, Rule rule, boolean persist) {
         Map<String, Object> env = buildEnv(event);
 
+        String groupKey = rule.getRuleType() == RuleType.AGGREGATE
+            ? extractGroupKey(event, rule) : null;
+
         boolean condition = passesPreFilter(event, rule) && evalCondition(rule, env);
         if (!condition) {
-            return new RuleEvaluation(false, null);
+            return new RuleEvaluation(false, null, groupKey);
         }
 
         Instant occurredAt = event.getOccurredAt();
 
         if (rule.getRuleType() == RuleType.AGGREGATE) {
             Double value = extractNumericValue(event, rule.getAggField());
-            String groupKey = extractGroupKey(event, rule);
             if (usesGrouping(rule) && groupKey == null) {
                 return new RuleEvaluation(true, null, null);
             }

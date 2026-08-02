@@ -45,6 +45,10 @@ public class Rule {
     @Column(name = "cooldown_seconds")
     private Integer cooldownSeconds;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "trigger_mode", length = 20)
+    private TriggerMode triggerMode = TriggerMode.EVERY_MATCH;
+
     @Column(name = "event_type", nullable = false, length = 100)
     private String eventType;
 
@@ -78,6 +82,10 @@ public class Rule {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    public TriggerMode getEffectiveTriggerMode() {
+        return triggerMode != null ? triggerMode : TriggerMode.EVERY_MATCH;
+    }
 
     @PrePersist
     void onCreate() {

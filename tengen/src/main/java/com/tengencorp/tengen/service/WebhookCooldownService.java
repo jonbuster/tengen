@@ -35,4 +35,16 @@ public class WebhookCooldownService {
     public void recordSuccessfulDelivery(RuleActionState state, Instant deliveredAt) {
         state.setLastSuccessfulDeliveryAt(deliveredAt);
     }
+
+    public boolean isEdgeSuppressed(RuleActionState state) {
+        return state.wasLastMatched();
+    }
+
+    public void recordSuccessfulEdgeDelivery(RuleActionState state) {
+        state.setLastMatched(true);
+    }
+
+    public void resetEdgeState(RuleActionState state) {
+        state.setLastMatched(false);
+    }
 }

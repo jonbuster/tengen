@@ -10,6 +10,7 @@ import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.entity.RuleAction;
 import com.tengencorp.tengen.repository.RuleRepository;
 import com.tengencorp.tengen.entity.RuleType;
+import com.tengencorp.tengen.entity.TriggerMode;
 import com.tengencorp.tengen.dto.AggregateResult;
 import com.tengencorp.tengen.dto.RuleEvaluation;
 import com.tengencorp.tengen.entity.EventIdempotency;
@@ -144,7 +145,14 @@ public class EventService {
 
         for (Rule rule : activeRules) {
             RuleEvaluation evaluation = ruleEngine.evaluate(event, rule);
-            if (!evaluation.matched(rule)) {
+            boolean currentMatch = evaluation.matched(rule);
+            if (isEdgeWebhook(rule) && hasTriggerScope(event, rule, evaluation)) {
+                if (!currentMatch) {
+                    resetEdgeState(rule, evaluation.groupKey());
+                }
+            }
+
+            if (!currentMatch) {
                 continue;
             }
 
@@ -218,8 +226,18 @@ public class EventService {
         }
         payload.put("aggregates", aggMap);
 
+        var state = needsActionState(rule) ? webhookCooldownService.lockState(rule, groupKey) : null;
+
+        if (isEdgeWebhook(rule)) {
+            if (webhookCooldownService.isEdgeSuppressed(state)) {
+                return false;
+            }
+        }
+
         if (rule.getCooldownSeconds() != null && rule.getCooldownSeconds() > 0) {
-            var state = webhookCooldownService.lockState(rule, groupKey);
+            if (state == null) {
+                state = webhookCooldownService.lockState(rule, groupKey);
+            }
             Instant now = Instant.now();
             if (webhookCooldownService.isSuppressed(state, rule.getCooldownSeconds(), now)) {
                 return true;
@@ -228,12 +246,45 @@ public class EventService {
             boolean delivered = deliverWebhook(rule, payload);
             if (delivered) {
                 webhookCooldownService.recordSuccessfulDelivery(state, Instant.now());
+                if (isEdgeWebhook(rule)) {
+                    webhookCooldownService.recordSuccessfulEdgeDelivery(state);
+                }
             }
             return false;
         }
 
-        deliverWebhook(rule, payload);
+        boolean delivered = deliverWebhook(rule, payload);
+        if (delivered && isEdgeWebhook(rule)) {
+            webhookCooldownService.recordSuccessfulEdgeDelivery(state);
+        }
         return false;
+    }
+
+    private boolean isEdgeWebhook(Rule rule) {
+        return rule.getAction() == RuleAction.WEBHOOK
+            && rule.getCallbackUrl() != null
+            && rule.getEffectiveTriggerMode() == TriggerMode.EDGE;
+    }
+
+    private boolean needsActionState(Rule rule) {
+        return rule.getAction() == RuleAction.WEBHOOK
+            && rule.getCallbackUrl() != null
+            && (isEdgeWebhook(rule) || (rule.getCooldownSeconds() != null && rule.getCooldownSeconds() > 0));
+    }
+
+    private boolean hasTriggerScope(Event event, Rule rule, RuleEvaluation evaluation) {
+        if (!rule.getEventType().equals(event.getType()) || !rule.getSource().equals(event.getSource())) {
+            return false;
+        }
+        return rule.getRuleType() != RuleType.AGGREGATE
+            || rule.getGroupBy() == null
+            || rule.getGroupBy().isBlank()
+            || evaluation.groupKey() != null;
+    }
+
+    private void resetEdgeState(Rule rule, String groupKey) {
+        var state = webhookCooldownService.lockState(rule, groupKey);
+        webhookCooldownService.resetEdgeState(state);
     }
 
     private boolean deliverWebhook(Rule rule, Map<String, Object> payload) {

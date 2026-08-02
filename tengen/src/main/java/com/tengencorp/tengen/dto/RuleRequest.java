@@ -4,6 +4,7 @@ import com.tengencorp.tengen.entity.AggregateType;
 import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.entity.RuleAction;
 import com.tengencorp.tengen.entity.RuleType;
+import com.tengencorp.tengen.entity.TriggerMode;
 import com.tengencorp.tengen.helper.AggregateFieldPath;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -31,6 +32,8 @@ public record RuleRequest(
 
         @PositiveOrZero(message = "Cooldown must be zero or greater")
         Integer cooldownSeconds,
+
+        TriggerMode triggerMode,
 
         @NotBlank(message = "Event type is required")
         @Size(max = 100, message = "Event type must be at most 100 characters")
@@ -69,6 +72,8 @@ public record RuleRequest(
         rule.setAction(action);
         rule.setCallbackUrl(action == RuleAction.WEBHOOK ? callbackUrl : null);
         rule.setCooldownSeconds(action == RuleAction.WEBHOOK ? cooldownSeconds : null);
+        rule.setTriggerMode(action == RuleAction.WEBHOOK && triggerMode != null
+            ? triggerMode : TriggerMode.EVERY_MATCH);
         rule.setEventType(eventType);
         rule.setSource(source);
         rule.setConditionScript(conditionScript);

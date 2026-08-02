@@ -4,6 +4,7 @@ import com.tengencorp.tengen.entity.AggregateType;
 import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.entity.RuleAction;
 import com.tengencorp.tengen.entity.RuleType;
+import com.tengencorp.tengen.entity.TriggerMode;
 
 import java.time.Instant;
 
@@ -17,6 +18,7 @@ public record RuleResponse(
         RuleAction action,
         String callbackUrl,
         Integer cooldownSeconds,
+        TriggerMode triggerMode,
         String eventType,
         String source,
         String conditionScript,
@@ -37,6 +39,7 @@ public record RuleResponse(
             rule.getAction(),
             rule.getCallbackUrl(),
             rule.getCooldownSeconds(),
+            rule.getEffectiveTriggerMode(),
             rule.getEventType(),
             rule.getSource(),
             rule.getConditionScript(),

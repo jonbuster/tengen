@@ -14,8 +14,8 @@ public interface RuleActionStateRepository extends JpaRepository<RuleActionState
 
     @Modifying
     @Query(value = """
-        insert into rule_action_state (rule_id, scope_key)
-        values (:ruleId, :scopeKey)
+        insert into rule_action_state (rule_id, scope_key, last_matched)
+        values (:ruleId, :scopeKey, false)
         on conflict (rule_id, scope_key) do nothing
         """, nativeQuery = true)
     void ensureExists(@Param("ruleId") Long ruleId, @Param("scopeKey") String scopeKey);

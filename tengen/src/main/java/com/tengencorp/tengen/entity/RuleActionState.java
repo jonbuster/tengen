@@ -40,8 +40,17 @@ public class RuleActionState {
     @Column(name = "last_successful_delivery_at")
     private Instant lastSuccessfulDeliveryAt;
 
+    /** Previous logical match state for EDGE webhook triggering. */
+    @Column(name = "last_matched")
+    private Boolean lastMatched;
+
     public RuleActionState(Rule rule, String scopeKey) {
         this.rule = rule;
         this.scopeKey = scopeKey;
+        this.lastMatched = false;
+    }
+
+    public boolean wasLastMatched() {
+        return Boolean.TRUE.equals(lastMatched);
     }
 }

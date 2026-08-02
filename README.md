@@ -29,6 +29,7 @@ Its architecture applies core CEP patterns found in platforms such as Esper, Sid
 - **Keyed Aggregates** — maintain independent windows using fields such as `data.userId`
 - **Webhook Actions** — synchronous best-effort delivery with up to three attempts and short backoff
 - **Webhook Cooldown** — durable global and keyed cooldown state; suppressed matches remain visible in `suppressedRules`
+- **Webhook Trigger Modes** — `EVERY_MATCH` delivery or durable `EDGE` delivery on false-to-true transitions
 - **Event Ingestion** — POST events to `/api/events` with a required `X-API-Key` header
 - **Event Idempotency** — optional API-key-scoped `Idempotency-Key` support prevents duplicate persistence, rule evaluation, aggregate contribution, and webhook delivery during retries
 - **Admin Console** — full CRUD for rules, a visual condition builder, rule tester, and API key management
@@ -43,6 +44,8 @@ Its architecture applies core CEP patterns found in platforms such as Esper, Sid
 - Rule testing includes the candidate event in aggregate calculations without persisting it or triggering webhooks.
 - Webhook cooldowns use processing time and are scoped by rule for global rules or by rule plus group key for keyed rules.
 - Successful webhook delivery starts or refreshes cooldown; failed delivery leaves the cooldown available for retry.
+- `EDGE` webhook triggers fire only when a rule changes from non-matching to matching; a failed delivery remains retryable.
+- Trigger state is scoped by rule and aggregate group key, and rule testing does not change it.
 - A matched rule remains matched when its webhook is suppressed, and the response identifies it through `suppressedRules`.
 - Event idempotency keys are scoped per API key and use a unique request fingerprint; an equivalent retry replays the original response, while a changed payload returns `409 Conflict`.
 - Different legitimate events, including events with identical data but different timestamps, must use different idempotency keys.
@@ -181,7 +184,7 @@ Implemented foundations include event ingestion, configurable rule evaluation, k
 
 Planned CEP capabilities include:
 
-- EDGE and once-per-window trigger modes
+- Once-per-window trigger mode
 - Optional event response detail levels and an explicit idempotency replay response header
 - Transactional outbox and asynchronous delivery
 - Rule versioning and audit history

@@ -1,6 +1,7 @@
 export type RuleType = "CONDITION" | "AGGREGATE";
 export type RuleAction = "LOG" | "WEBHOOK";
 export type AggregateType = "COUNT" | "SUM" | "AVG" | "MIN" | "MAX";
+export type TriggerMode = "EVERY_MATCH" | "EDGE";
 
 export interface Rule {
   id: number;
@@ -9,6 +10,7 @@ export interface Rule {
   action: RuleAction;
   callbackUrl: string | null;
   cooldownSeconds: number | null;
+  triggerMode: TriggerMode;
   eventType: string;
   source: string;
   conditionScript: string;
@@ -28,6 +30,7 @@ export interface RuleRequest {
   action: RuleAction;
   callbackUrl?: string | null;
   cooldownSeconds?: number | null;
+  triggerMode?: TriggerMode | null;
   eventType: string;
   source: string;
   conditionScript: string;

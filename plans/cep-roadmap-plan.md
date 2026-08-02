@@ -25,7 +25,7 @@ Implemented the first correctness-focused slice without changing the public API 
 | Late events can include future events in windows | Implemented |
 | Rule testing omits the candidate event from aggregates | Implemented |
 | Keyed/grouped aggregates | Implemented |
-| Trigger lifecycle and alert deduplication | Cooldown implemented; `EDGE` and once-per-window remain later features |
+| Trigger lifecycle and alert deduplication | Cooldown and `EDGE` implemented; once-per-window remains later |
 | Transactional outbox and async actions | Synchronous webhook delivery with retries implemented; outbox/async delivery remains later |
 
 ## Implemented: Keyed Aggregates
@@ -135,9 +135,19 @@ Implemented the first trigger-lifecycle slice for webhook actions:
 - Event responses include additive `suppressedRules` details.
 - Rule testing does not deliver webhooks or mutate cooldown state.
 
+## Implemented: EDGE Trigger Mode
+
+Implemented a durable rising-edge trigger mode for webhook actions:
+
+- Rules accept `EVERY_MATCH` or `EDGE` trigger modes.
+- `EDGE` sends on false-to-true transitions and ignores consecutive matches.
+- A failed EDGE delivery remains retryable on the next matching event.
+- EDGE state is scoped by rule and aggregate group key.
+- The rule form exposes trigger mode and cooldown under a collapsed Advanced section.
+
 ## Later Assessment Roadmap
 
-1. Trigger modes such as `EDGE` and once-per-window.
+1. Once-per-window trigger mode.
 2. Transactional outbox with asynchronous webhook delivery and retries.
 3. Rule lifecycle/versioning and audit history; basic request validation and active toggling are already implemented.
 4. Sequence and absence patterns.

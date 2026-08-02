@@ -1,6 +1,9 @@
 "use client";
 
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Box,
   Button,
   Checkbox,
@@ -15,6 +18,7 @@ import {
   Typography,
 } from "@mui/material";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { useState } from "react";
 import { ConditionBuilder } from "@/components/ConditionBuilder";
 import {
@@ -23,11 +27,15 @@ import {
   generateAviator,
   parseAviator,
 } from "@/lib/conditionBuilder";
-import { Rule, RuleAction, RuleRequest, RuleType } from "@/lib/types";
+import { Rule, RuleAction, RuleRequest, RuleType, TriggerMode } from "@/lib/types";
 
 const RULE_TYPES: RuleType[] = ["CONDITION", "AGGREGATE"];
 const ACTIONS: RuleAction[] = ["LOG", "WEBHOOK"];
 const AGG_TYPES = ["COUNT", "SUM", "AVG", "MIN", "MAX"];
+const TRIGGER_MODES: { value: TriggerMode; label: string }[] = [
+  { value: "EVERY_MATCH", label: "Every match" },
+  { value: "EDGE", label: "On rising edge" },
+];
 
 function FieldInfo({ title }: { title: string }) {
   return (
@@ -60,6 +68,7 @@ function toRequest(
       action === "WEBHOOK" && values.cooldownSeconds !== ""
         ? Number(values.cooldownSeconds)
         : null,
+    triggerMode: action === "WEBHOOK" ? (values.triggerMode as TriggerMode) : "EVERY_MATCH",
     eventType: values.eventType,
     source: values.source,
     conditionScript:
@@ -80,6 +89,7 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
     action: initial?.action ?? "LOG",
     callbackUrl: initial?.callbackUrl ?? "",
     cooldownSeconds: initial?.cooldownSeconds?.toString() ?? "",
+    triggerMode: initial?.triggerMode ?? "EVERY_MATCH",
     eventType: initial?.eventType ?? "",
     source: initial?.source ?? "",
     conditionScript: initial?.conditionScript ?? "",
@@ -152,23 +162,6 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
             <Grid item xs={12} sm={6}>
               <TextField label="Callback URL" value={values.callbackUrl} onChange={set("callbackUrl")} fullWidth />
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Cooldown (seconds)"
-                type="number"
-                inputProps={{ min: 0 }}
-                value={values.cooldownSeconds}
-                onChange={set("cooldownSeconds")}
-                fullWidth
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <FieldInfo title="Controls repeated webhook delivery, not rule detection. Leave blank or use 0 to disable." />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Grid>
           </>
         )}
         <Grid item xs={12} sm={6}>
@@ -178,6 +171,51 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
           <TextField label="Source" value={values.source} onChange={set("source")} fullWidth required />
         </Grid>
       </Grid>
+
+      {isWebhook && (
+        <Accordion disableGutters>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Typography>Advanced</Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  select
+                  label="Trigger mode"
+                  value={values.triggerMode || "EVERY_MATCH"}
+                  onChange={set("triggerMode")}
+                  fullWidth
+                  helperText="On rising edge sends a webhook only when the rule changes from not matching to matching."
+                >
+                  {TRIGGER_MODES.map((mode) => (
+                    <MenuItem key={mode.value} value={mode.value}>
+                      {mode.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  label="Cooldown (seconds)"
+                  type="number"
+                  inputProps={{ min: 0 }}
+                  value={values.cooldownSeconds}
+                  onChange={set("cooldownSeconds")}
+                  fullWidth
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <FieldInfo title="Controls repeated webhook delivery, not rule detection. Leave blank or use 0 to disable." />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Grid>
+            </Grid>
+          </AccordionDetails>
+        </Accordion>
+      )}
 
       {isAggregate && (
         <>
