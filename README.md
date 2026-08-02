@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/tengen-logo-1.png" alt="Tengen logo" width="240">
+</p>
+
 # Tengen — Complex Event Processing Webapp
 
 Tengen is a rule-driven Complex Event Processing web application for ingesting JSON events, evaluating declarative conditions and time-windowed aggregates, grouping events by business keys, and triggering actions such as webhooks.
