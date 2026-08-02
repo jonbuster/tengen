@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -24,8 +25,10 @@ public class EventController {
 
     @PostMapping
     public ResponseEntity<EventResponse> ingest(@Valid @RequestBody EventRequest request,
-                                                Authentication authentication) {
+                                                Authentication authentication,
+                                                @RequestHeader(value = "Idempotency-Key", required = false)
+                                                String idempotencyKey) {
         Long apiKeyId = (authentication instanceof ApiKeyPrincipal principal) ? principal.getKeyId() : null;
-        return ResponseEntity.ok(eventService.process(request, apiKeyId));
+        return ResponseEntity.ok(eventService.process(request, apiKeyId, idempotencyKey));
     }
 }

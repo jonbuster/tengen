@@ -11,14 +11,18 @@ import com.tengencorp.tengen.entity.RuleAction;
 import com.tengencorp.tengen.repository.RuleRepository;
 import com.tengencorp.tengen.entity.RuleType;
 import com.tengencorp.tengen.dto.AggregateResult;
-import com.tengencorp.tengen.service.RuleEngine;
 import com.tengencorp.tengen.dto.RuleEvaluation;
-import com.tengencorp.tengen.service.WebhookClient;
+import com.tengencorp.tengen.entity.EventIdempotency;
+import com.tengencorp.tengen.entity.EventIdempotencyStatus;
+import com.tengencorp.tengen.exception.IdempotencyConflictException;
+import com.tengencorp.tengen.helper.EventRequestHasher;
+import com.tengencorp.tengen.repository.EventIdempotencyRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -33,6 +37,7 @@ import java.util.Map;
 @Service
 public class EventService {
 
+    private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 255;
     private static final Logger log = LoggerFactory.getLogger(EventService.class);
 
     private final EventRepository eventRepository;
@@ -42,10 +47,15 @@ public class EventService {
     private final WebhookClient webhookClient;
     private final WebhookCooldownService webhookCooldownService;
     private final ApiKeyService apiKeyService;
+    private final EventIdempotencyRepository eventIdempotencyRepository;
+    private final EventRequestHasher eventRequestHasher;
+    private final ObjectMapper objectMapper;
 
     public EventService(EventRepository eventRepository, ApiKeyRepository apiKeyRepository,
                         RuleRepository ruleRepository, RuleEngine ruleEngine, WebhookClient webhookClient,
-                        WebhookCooldownService webhookCooldownService, ApiKeyService apiKeyService) {
+                        WebhookCooldownService webhookCooldownService, ApiKeyService apiKeyService,
+                        EventIdempotencyRepository eventIdempotencyRepository,
+                        EventRequestHasher eventRequestHasher, ObjectMapper objectMapper) {
         this.eventRepository = eventRepository;
         this.apiKeyRepository = apiKeyRepository;
         this.ruleRepository = ruleRepository;
@@ -53,6 +63,9 @@ public class EventService {
         this.webhookClient = webhookClient;
         this.webhookCooldownService = webhookCooldownService;
         this.apiKeyService = apiKeyService;
+        this.eventIdempotencyRepository = eventIdempotencyRepository;
+        this.eventRequestHasher = eventRequestHasher;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional
@@ -62,18 +75,66 @@ public class EventService {
 
     @Transactional
     public EventResponse process(EventRequest request, Long apiKeyId) {
+        return process(request, apiKeyId, null);
+    }
+
+    @Transactional
+    public EventResponse process(EventRequest request, Long apiKeyId, String idempotencyKey) {
         if (apiKeyId == null) {
             throw new AccessDeniedException("API key is required");
         }
 
-        Instant occurredAt = request.timestamp() != null ? request.timestamp() : Instant.now();
         ApiKey apiKey = apiKeyRepository.findById(apiKeyId)
             .orElseThrow(() -> new AccessDeniedException("API key is invalid"));
-        Event event = new Event(request.type(), request.source(), occurredAt, request.data(),
+
+        String normalizedKey = normalizeIdempotencyKey(idempotencyKey);
+        String requestHash = normalizedKey != null ? eventRequestHasher.hash(request) : null;
+
+        Event event = new Event(request.type(), request.source(),
+            request.timestamp() != null ? request.timestamp() : Instant.now(), request.data(),
             apiKey);
         if (!apiKeyService.isValid(apiKey, event)) {
             throw new AccessDeniedException("API key is not allowed for this event");
         }
+
+        if (normalizedKey == null) {
+            return processEvent(request, apiKey).response();
+        }
+
+        int inserted = eventIdempotencyRepository.insertIfAbsent(
+            apiKeyId,
+            normalizedKey,
+            requestHash,
+            EventIdempotencyStatus.PROCESSING.name(),
+            Instant.now());
+        EventIdempotency idempotency = eventIdempotencyRepository
+            .findByApiKeyIdAndIdempotencyKey(apiKeyId, normalizedKey)
+            .orElseThrow(() -> new IllegalStateException("Idempotency record was not created"));
+
+        if (inserted == 0) {
+            if (!requestHash.equals(idempotency.getRequestHash())) {
+                throw new IdempotencyConflictException(
+                    "Idempotency-Key has already been used with a different event payload");
+            }
+            if (idempotency.getStatus() == EventIdempotencyStatus.COMPLETED) {
+                return replayResponse(idempotency);
+            }
+            throw new IdempotencyConflictException(
+                "The request for this Idempotency-Key is still being processed; retry later");
+        }
+
+        ProcessingResult result = processEvent(request, apiKey);
+        idempotency.setEvent(result.event());
+        idempotency.setResponsePayload(toPayload(result.response()));
+        idempotency.setStatus(EventIdempotencyStatus.COMPLETED);
+        idempotency.setCompletedAt(Instant.now());
+        return result.response();
+    }
+
+    private ProcessingResult processEvent(EventRequest request, ApiKey apiKey) {
+        Instant occurredAt = request.timestamp() != null ? request.timestamp() : Instant.now();
+        Event event = new Event(request.type(), request.source(), occurredAt, request.data(),
+            apiKey);
         event = eventRepository.save(event);
 
         List<Rule> activeRules = ruleRepository.findByActiveTrueOrderByNameAsc();
@@ -110,7 +171,39 @@ public class EventService {
         }
 
         boolean matched = !matchedRuleNames.isEmpty();
-        return new EventResponse(request, "accepted", matched, matchedRuleNames, aggregates, suppressedRuleNames);
+        return new ProcessingResult(
+            event,
+            new EventResponse(request, "accepted", matched, matchedRuleNames, aggregates, suppressedRuleNames));
+    }
+
+    private String normalizeIdempotencyKey(String idempotencyKey) {
+        if (idempotencyKey == null) {
+            return null;
+        }
+        String normalized = idempotencyKey.trim();
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException("Idempotency-Key must not be blank");
+        }
+        if (normalized.length() > MAX_IDEMPOTENCY_KEY_LENGTH) {
+            throw new IllegalArgumentException(
+                "Idempotency-Key must be at most " + MAX_IDEMPOTENCY_KEY_LENGTH + " characters");
+        }
+        return normalized;
+    }
+
+    private EventResponse replayResponse(EventIdempotency idempotency) {
+        if (idempotency.getResponsePayload() == null) {
+            throw new IllegalStateException("Completed idempotency record has no response");
+        }
+        return objectMapper.convertValue(idempotency.getResponsePayload(), EventResponse.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> toPayload(EventResponse response) {
+        return objectMapper.convertValue(response, Map.class);
+    }
+
+    private record ProcessingResult(Event event, EventResponse response) {
     }
 
     private boolean dispatchWebhook(Rule rule, EventRequest request, AggregateResult aggregateResult, String groupKey) {

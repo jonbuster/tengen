@@ -120,6 +120,7 @@ The original event processor and frontend migration plans also have these implem
 - JSON event ingestion through `POST /api/events` with persisted events.
 - CONDITION rules and windowed AGGREGATE rules using `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX`.
 - Synchronous best-effort webhook delivery with up to three attempts and short backoff.
+- Optional API-key-scoped event idempotency keys with request conflict detection and response replay.
 - REST rule administration, rule testing, JWT-protected admin access, and the Next.js/MUI admin UI.
 - API-key generation, hashed storage, revocation, and event-to-key association through `X-API-Key`.
 
@@ -137,9 +138,9 @@ Implemented the first trigger-lifecycle slice for webhook actions:
 ## Later Assessment Roadmap
 
 1. Trigger modes such as `EDGE` and once-per-window.
-2. Event idempotency keys.
-3. Transactional outbox with asynchronous webhook delivery and retries.
-4. Rule lifecycle/versioning and audit history; basic request validation and active toggling are already implemented.
-5. Sequence and absence patterns.
-6. Watermarks and allowed lateness; event-time windows and future-event exclusion are already implemented.
-7. Broker connectors and replay/backfill.
+2. Transactional outbox with asynchronous webhook delivery and retries.
+3. Rule lifecycle/versioning and audit history; basic request validation and active toggling are already implemented.
+4. Sequence and absence patterns.
+5. Watermarks and allowed lateness; event-time windows and future-event exclusion are already implemented.
+6. Broker connectors and replay/backfill.
+7. Event API response controls: optionally omit aggregate details for external producers and add an explicit `X-Idempotency-Replayed` response header.

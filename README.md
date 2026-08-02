@@ -18,6 +18,7 @@ Its architecture applies core CEP patterns found in platforms such as Esper, Sid
 - **Webhook Actions** — synchronous best-effort delivery with up to three attempts and short backoff
 - **Webhook Cooldown** — durable global and keyed cooldown state; suppressed matches remain visible in `suppressedRules`
 - **Event Ingestion** — POST events to `/api/events` with a required `X-API-Key` header
+- **Event Idempotency** — optional API-key-scoped `Idempotency-Key` support prevents duplicate persistence, rule evaluation, aggregate contribution, and webhook delivery during retries
 - **Admin Console** — full CRUD for rules, a visual condition builder, rule tester, and API key management
 - **JWT Auth** — access + refresh tokens stored in **httpOnly cookies**; the browser never sees a JWT
 - **Secure by Default** — server-side token refresh, BCrypt-hashed admin credentials, hashed and revocable API keys
@@ -31,6 +32,8 @@ Its architecture applies core CEP patterns found in platforms such as Esper, Sid
 - Webhook cooldowns use processing time and are scoped by rule for global rules or by rule plus group key for keyed rules.
 - Successful webhook delivery starts or refreshes cooldown; failed delivery leaves the cooldown available for retry.
 - A matched rule remains matched when its webhook is suppressed, and the response identifies it through `suppressedRules`.
+- Event idempotency keys are scoped per API key and use a unique request fingerprint; an equivalent retry replays the original response, while a changed payload returns `409 Conflict`.
+- Different legitimate events, including events with identical data but different timestamps, must use different idempotency keys.
 
 ## Tech Stack
 
@@ -142,14 +145,32 @@ curl -X POST http://localhost:8080/api/events \
 Keys are hashed at rest, shown only once at creation, scoped to allowed event types and sources, associated with ingested events, and can be revoked immediately.
 Requests without a valid key return `401`; a valid key that is not allowed to publish the event type or source returns `403`.
 
+### Retrying Event Requests
+
+Producers should send an `Idempotency-Key` header for reliable retries. Create the key once for the logical event and persist it with the producer's outbox or message record. Reuse the same key when retrying after a timeout:
+
+```bash
+curl -X POST http://localhost:8080/api/events \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: <your-raw-key>" \
+  -H "Idempotency-Key: payment-123" \
+  -d '{"type":"payment","source":"billing","timestamp":"2026-08-02T10:00:00Z","data":{"amount":100}}'
+```
+
+The key is scoped to the API key. A retry with the same key and equivalent payload returns the original response without persisting or evaluating the event again. Reusing a key with a different payload returns `409 Conflict`. Different legitimate events, including events with identical data but different timestamps, must use different keys.
+
+The header is optional for backward compatibility; requests without it continue to be processed normally.
+
+Idempotency records are stored durably in PostgreSQL and the original response is saved for replay. The current API does not add a separate replay indicator to the response; the response body remains equivalent to the first successful request.
+
 ## CEP Roadmap
 
-Implemented foundations include event ingestion, configurable rule evaluation, keyed aggregates, rule testing, synchronous webhook actions, and durable webhook cooldown handling.
+Implemented foundations include event ingestion, configurable rule evaluation, keyed aggregates, rule testing, synchronous webhook actions, durable webhook cooldown handling, and optional event idempotency keys.
 
 Planned CEP capabilities include:
 
 - EDGE and once-per-window trigger modes
-- Event idempotency keys
+- Optional event response detail levels and an explicit idempotency replay response header
 - Transactional outbox and asynchronous delivery
 - Rule versioning and audit history
 - Sequence and absence patterns

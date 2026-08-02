@@ -21,6 +21,12 @@ public class ApiExceptionHandler {
         return error(HttpStatus.NOT_FOUND, e.getMessage(), request);
     }
 
+    @ExceptionHandler(IdempotencyConflictException.class)
+    public ResponseEntity<ErrorResponse> idempotencyConflict(IdempotencyConflictException e,
+                                                             HttpServletRequest request) {
+        return error(HttpStatus.CONFLICT, e.getMessage(), request);
+    }
+
     @ExceptionHandler({IllegalArgumentException.class, MethodArgumentTypeMismatchException.class})
     public ResponseEntity<ErrorResponse> badRequest(Exception e, HttpServletRequest request) {
         return error(HttpStatus.BAD_REQUEST, e.getMessage(), request);
