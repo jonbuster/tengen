@@ -13,7 +13,7 @@ Its architecture applies core CEP patterns found in platforms such as Esper, Sid
 - **Keyed Aggregates** — maintain independent windows using fields such as `data.userId`
 - **Webhook Actions** — synchronous best-effort delivery with up to three attempts and short backoff
 - **Webhook Cooldown** — durable global and keyed cooldown state; suppressed matches remain visible in `suppressedRules`
-- **Event Ingestion** — POST events to `/api/events` with an `X-API-Key` header
+- **Event Ingestion** — POST events to `/api/events` with a required `X-API-Key` header
 - **Admin Console** — full CRUD for rules, a visual condition builder, rule tester, and API key management
 - **JWT Auth** — access + refresh tokens stored in **httpOnly cookies**; the browser never sees a JWT
 - **Secure by Default** — server-side token refresh, BCrypt-hashed admin credentials, hashed and revocable API keys
@@ -56,7 +56,7 @@ Its architecture applies core CEP patterns found in platforms such as Esper, Sid
 - **Backend** (`tengen/`) — Spring Boot REST API.
   - `/api/auth/login`, `/api/auth/refresh` — JWT auth (access 15 min, refresh 7 days)
   - `/api/rules/**`, `/api/keys/**` — JWT-protected admin API
-  - `/api/events` — event ingestion, with optional `X-API-Key` association
+  - `/api/events` — API-key-only event ingestion
 - **Database** — PostgreSQL 17, managed by Docker Compose.
 
 ## Quick Start (Development)
@@ -126,7 +126,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8080 npm run dev
 
 1. Log in to the admin console → **API Keys**.
 2. Create a key — the raw value (prefix `tg_...`) is shown **once**; store it server-side.
-3. Ingest events with `X-API-Key`:
+3. Ingest events with the required `X-API-Key`:
 
 ```bash
 curl -X POST http://localhost:8080/api/events \
@@ -135,7 +135,8 @@ curl -X POST http://localhost:8080/api/events \
   -d '{"type":"transaction","source":"payment-api","data":{"amount":2500,"country":"PH"}}'
 ```
 
-Keys are hashed at rest, shown only once at creation, associated with ingested events, and can be revoked immediately.
+Keys are hashed at rest, shown only once at creation, scoped to allowed event types and sources, associated with ingested events, and can be revoked immediately.
+Requests without a valid key return `401`; a valid key that is not allowed to publish the event type or source returns `403`.
 
 ## CEP Roadmap
 

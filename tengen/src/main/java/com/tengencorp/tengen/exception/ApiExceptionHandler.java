@@ -1,6 +1,7 @@
 package com.tengencorp.tengen.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -32,6 +33,11 @@ public class ApiExceptionHandler {
             .reduce((a, b) -> a + "; " + b)
             .orElse("Validation failed");
         return error(HttpStatus.BAD_REQUEST, message, request);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> forbidden(AccessDeniedException e, HttpServletRequest request) {
+        return error(HttpStatus.FORBIDDEN, e.getMessage(), request);
     }
 
     @ExceptionHandler(NoResourceFoundException.class)

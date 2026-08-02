@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.time.Instant;
 
 /**
  * Reads {@code X-API-Key}, validates the key and populates the
@@ -27,19 +28,32 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
     }
 
     @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return !"/api/events".equals(request.getServletPath())
+            || "OPTIONS".equalsIgnoreCase(request.getMethod());
+    }
+
+    @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         String rawKey = request.getHeader("X-API-Key");
-        if (rawKey != null && !rawKey.isBlank()) {
-            try {
-                ApiKey key = apiKeyService.findByRawKey(rawKey);
-                if (key.isActive()) {
-                    SecurityContextHolder.getContext()
-                        .setAuthentication(new ApiKeyPrincipal(key.getId(), key.getName()));
-                }
-            } catch (Exception e) {
-                // Invalid key — leave context empty; the security rules reject the request.
+        if (rawKey == null || rawKey.isBlank()) {
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "API key is required");
+            return;
+        }
+
+        try {
+            ApiKey key = apiKeyService.findByRawKey(rawKey);
+            if (!key.isActive()
+                    || (key.getExpiresAt() != null && !key.getExpiresAt().isAfter(Instant.now()))) {
+                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "API key is invalid or expired");
+                return;
             }
+            SecurityContextHolder.getContext()
+                .setAuthentication(new ApiKeyPrincipal(key.getId(), key.getName()));
+        } catch (Exception e) {
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "API key is invalid");
+            return;
         }
         filterChain.doFilter(request, response);
     }

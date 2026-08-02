@@ -72,8 +72,12 @@ public class ApiKeyService {
     @Transactional(readOnly = true)
     public boolean isValid(String rawKey, Event event) {
         ApiKey key = findByRawKey(rawKey);
+        return isValid(key, event);
+    }
+
+    public boolean isValid(ApiKey key, Event event) {
         return key.isActive()
-            && (key.getExpiresAt() == null || !key.getExpiresAt().isBefore(Instant.now()))
+            && (key.getExpiresAt() == null || key.getExpiresAt().isAfter(Instant.now()))
             && (key.getAllowedEventTypes() == null || key.getAllowedEventTypes().contains(event.getType()))
             && (key.getAllowedSources() == null || key.getAllowedSources().contains(event.getSource()));
     }

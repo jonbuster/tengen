@@ -4,6 +4,7 @@ import com.tengencorp.tengen.repository.ApiKeyRepository;
 import com.tengencorp.tengen.dto.EventRequest;
 import com.tengencorp.tengen.dto.EventResponse;
 import com.tengencorp.tengen.entity.Event;
+import com.tengencorp.tengen.entity.ApiKey;
 import com.tengencorp.tengen.repository.EventRepository;
 import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.entity.RuleAction;
@@ -15,6 +16,7 @@ import com.tengencorp.tengen.dto.RuleEvaluation;
 import com.tengencorp.tengen.service.WebhookClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,16 +41,18 @@ public class EventService {
     private final RuleEngine ruleEngine;
     private final WebhookClient webhookClient;
     private final WebhookCooldownService webhookCooldownService;
+    private final ApiKeyService apiKeyService;
 
     public EventService(EventRepository eventRepository, ApiKeyRepository apiKeyRepository,
                         RuleRepository ruleRepository, RuleEngine ruleEngine, WebhookClient webhookClient,
-                        WebhookCooldownService webhookCooldownService) {
+                        WebhookCooldownService webhookCooldownService, ApiKeyService apiKeyService) {
         this.eventRepository = eventRepository;
         this.apiKeyRepository = apiKeyRepository;
         this.ruleRepository = ruleRepository;
         this.ruleEngine = ruleEngine;
         this.webhookClient = webhookClient;
         this.webhookCooldownService = webhookCooldownService;
+        this.apiKeyService = apiKeyService;
     }
 
     @Transactional
@@ -58,9 +62,18 @@ public class EventService {
 
     @Transactional
     public EventResponse process(EventRequest request, Long apiKeyId) {
+        if (apiKeyId == null) {
+            throw new AccessDeniedException("API key is required");
+        }
+
         Instant occurredAt = request.timestamp() != null ? request.timestamp() : Instant.now();
+        ApiKey apiKey = apiKeyRepository.findById(apiKeyId)
+            .orElseThrow(() -> new AccessDeniedException("API key is invalid"));
         Event event = new Event(request.type(), request.source(), occurredAt, request.data(),
-            apiKeyId != null ? apiKeyRepository.getReferenceById(apiKeyId) : null);
+            apiKey);
+        if (!apiKeyService.isValid(apiKey, event)) {
+            throw new AccessDeniedException("API key is not allowed for this event");
+        }
         event = eventRepository.save(event);
 
         List<Rule> activeRules = ruleRepository.findByActiveTrueOrderByNameAsc();

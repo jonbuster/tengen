@@ -41,10 +41,10 @@ public class SecurityConfig {
                 .accessDeniedHandler((request, response, accessDeniedException) ->
                     response.sendError(HttpStatus.FORBIDDEN.value(), "Forbidden")))
             .authorizeHttpRequests(auth -> auth
-                // API-key authenticated by ApiKeyAuthFilter, but optional for existing clients.
+                // Admin APIs use JWT; event ingestion is API-key-only.
                 .requestMatchers("/api/auth/login", "/api/auth/refresh").permitAll()
                 .requestMatchers("/api/rules/**", "/api/keys/**").authenticated()
-                .requestMatchers("/api/events").permitAll()
+                .requestMatchers("/api/events").authenticated()
                 .anyRequest().permitAll())
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(apiKeyAuthFilter, JwtAuthFilter.class);
