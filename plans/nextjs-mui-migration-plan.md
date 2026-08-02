@@ -1,5 +1,9 @@
 # Plan: Migrate Tengen Admin Frontend from Thymeleaf to Next.js + MUI
 
+## Status: Implemented
+
+The standalone Next.js 15 and MUI administration console is implemented with rule CRUD/testing, API-key management, server-side JWT cookie handling through the Next.js proxy, and Docker Compose support. The console has since been extended with webhook trigger configuration and the Deliveries operations page.
+
 ## 1. Overview
 
 Replace the Thymeleaf server-rendered admin UI with a **Next.js + MUI (Material UI)** single-page application that talks to a new **REST admin API** on the Spring Boot backend. The backend stays the single source of truth (rules, events, Aviator evaluation); Next.js becomes a pure presentation layer.

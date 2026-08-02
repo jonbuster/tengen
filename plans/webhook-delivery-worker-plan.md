@@ -4,6 +4,8 @@
 
 Process committed webhook outbox rows outside the event-ingestion transaction. This second asynchronous delivery slice is implemented and depends on the data model and enqueue behavior in `durable-webhook-outbox-plan.md`.
 
+The completed worker uses leased PostgreSQL claims, performs one HTTP attempt at a time outside database transactions, retries transient failures with bounded backoff, and retains exhausted work as `DEAD_LETTER` history.
+
 ## Goal
 
 Deliver queued webhooks reliably with bounded retries, exponential backoff, safe concurrent claiming, restart recovery, and dead-letter handling. Event ingestion must remain independent of callback latency and availability.
@@ -204,4 +206,4 @@ Implemented on 2026-08-02:
 
 ## Follow-up Plan
 
-Operational follow-ups are documented in [webhook-delivery-history-plan.md](webhook-delivery-history-plan.md) and include searchable history, diagnostics, and controlled manual retry.
+The operational follow-up in [webhook-delivery-history-plan.md](webhook-delivery-history-plan.md) is also implemented, including searchable history, diagnostics, and controlled manual retry of the same outbox row.

@@ -1,6 +1,6 @@
 # Event Idempotency Keys Plan
 
-## Status: Implemented — integration verification pending approval
+## Status: Implemented — manually verified 2026-08-02; automated integration verification pending approval
 
 Add optional client-provided idempotency keys to `POST /api/events` so producers can safely retry requests without persisting or evaluating the same logical event more than once.
 
@@ -41,8 +41,8 @@ Idempotency is scoped to the API key. The same key used with two different API k
 | Request | Behavior |
 |---|---|
 | No `Idempotency-Key` header | Preserve current behavior; process normally without deduplication. |
-| First request with a key | Process, persist, evaluate, dispatch actions, and save the response. |
-| Retry with the same key and equivalent payload | Return the original response and do not persist, evaluate, or dispatch again. |
+| First request with a key | Process, persist, evaluate, queue eligible actions, and save the response. |
+| Retry with the same key and equivalent payload | Return the original response and do not persist, evaluate, or queue actions again. |
 | Same key with a different payload | Return `409 Conflict`; never process the second payload. |
 | Same key while the first request is still processing | Do not process concurrently; return a clear retryable conflict or wait and replay the completed response. |
 
@@ -116,7 +116,7 @@ Desired behavior:
 - If processing rolls back, the reservation must not block a later retry forever.
 - A payload conflict is rejected even if the original request has already completed.
 
-This feature does not provide exactly-once delivery to external webhook servers. Because webhook delivery is currently synchronous, a process failure after the remote server accepts a webhook but before the database transaction commits can still cause a duplicate delivery on retry. The transactional outbox should address that later.
+This feature does not provide exactly-once effects at an external webhook server. The implemented transactional outbox prevents event-request retries from creating another logical delivery, while the receiver should still use its own idempotency protection for rare ambiguous network outcomes.
 
 ## API Examples
 
@@ -134,13 +134,12 @@ Retry the same logical event with the same `Idempotency-Key`. Tengen returns the
 
 Reusing `payment-123` with a different amount or timestamp returns `409 Conflict`.
 
-## Documentation Changes
+## Documentation Result
 
-- Update `README.md` under **Ingesting Events** with the header contract and retry examples.
-- Document that idempotency keys are optional for backward compatibility but strongly recommended for reliable producers.
-- Explain that different legitimate events, even with identical data, require different keys.
-- Document the conflict response and the API-key scope.
-- Add the feature to the CEP roadmap as implemented after verification.
+- `README.md` documents the header contract, retry example, API-key scope, and `409 Conflict` behavior.
+- Idempotency keys remain optional for backward compatibility but are recommended for reliable producers.
+- Different legitimate events, even with identical data, require different keys.
+- The CEP roadmap records the feature as implemented.
 
 No frontend UI is required because idempotency keys are supplied by event-producing clients, not configured in the admin console.
 
@@ -168,7 +167,7 @@ No frontend UI is required because idempotency keys are supplied by event-produc
 - Concurrent requests with the same key result in one processing flow.
 - Requests without an idempotency key retain existing behavior.
 
-Before implementation, confirm approval to create or run the Spring Boot integration tests required by this plan.
+Spring Boot integration tests still require explicit user approval before they are created or run. Manual verification confirmed response replay for an equivalent request and `409 Conflict` for a changed payload using the same key.
 
 ## Acceptance Criteria
 
@@ -176,8 +175,4 @@ The feature is complete when a producer can safely retry an event using the same
 
 ## Follow-up Features
 
-After this feature, the next roadmap candidates remain:
-
-1. `EDGE` and once-per-window trigger modes.
-2. Transactional outbox with asynchronous webhook delivery and retry history.
-3. Rule versioning and audit history.
+`EDGE`, once-per-window triggering, the transactional outbox, asynchronous delivery, and retry history were implemented after this slice. Remaining roadmap candidates include rule versioning and audit history, retention for idempotency records, and an explicit replay-response header.

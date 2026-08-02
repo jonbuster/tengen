@@ -1,12 +1,14 @@
 # Webhook Cooldown Trigger Plan
 
-## Status: Implemented
+## Status: Implemented — 2026-08-02
 
 Completed on 2026-08-02. The backend, REST response, frontend rule form, and CEP roadmap were updated. Manual verification confirmed that the first matching event is delivered and a second matching event within the cooldown remains matched while appearing in `suppressedRules`.
 
+The original slice preceded asynchronous delivery. In the current implementation, an eligible match reserves and queues an outbox row; cooldown begins only after the background worker successfully delivers it.
+
 ## Summary
 
-Add an optional cooldown to prevent repeated webhook notifications while a rule remains matched. This is the next high-impact, small-scope feature after keyed aggregates.
+Adds an optional cooldown to prevent repeated webhook notifications while a rule remains matched. This was the next high-impact, small-scope feature after keyed aggregates.
 
 The rule remains logically matched, but repeated webhook delivery is suppressed until the cooldown expires.
 
@@ -23,19 +25,19 @@ The rule remains logically matched, but repeated webhook delivery is suppressed 
   - rule ID
   - scope key
   - last successful delivery timestamp
-- Only successful webhook delivery starts or refreshes cooldown.
+- Only successful background-worker delivery starts or refreshes cooldown.
 - Failed webhook delivery leaves cooldown unchanged so later events can retry.
 - Keep `matched: true` when a webhook is suppressed.
 - Add `suppressedRules` to the event response so callers can see that the rule matched but its action was throttled.
 - Leave `LOG` behavior unchanged because `LOG` currently only means the match is returned in the API response.
-- Do not change synchronous webhook delivery or implement the transactional outbox in this slice.
+- The original slice did not change synchronous delivery; the later transactional-outbox and worker slices now provide the current asynchronous behavior.
 
 ## Behavior
 
 Example: a keyed rule with a 600-second cooldown.
 
 ```text
-Alice event 1 -> matched, webhook delivered
+Alice event 1 -> matched, webhook queued and delivered by the worker
 Alice event 2 -> matched, webhook suppressed
 Bob event 1   -> matched independently, webhook delivered
 After 600s    -> Alice webhook can deliver again
@@ -51,8 +53,8 @@ Rule testing does not deliver webhooks or mutate cooldown state.
 - Add a `RuleActionState` entity/table with a unique `(rule_id, scope_key)` constraint.
 - Use an empty or reserved scope key for global rules and the resolved keyed aggregate value for grouped rules.
 - Ensure the action-state row exists before acquiring a database-backed lock for cooldown evaluation.
-- Check the last successful delivery before calling `WebhookClient`.
-- Update the delivery timestamp only when `WebhookClient.deliver(...)` returns success.
+- Check the last successful delivery and pending reservation before creating another outbox row.
+- Update the delivery timestamp only when the worker finalizes a successful delivery.
 - Keep detection and action throttling separate: evaluation remains matched even when delivery is suppressed.
 
 ## Frontend/API Changes
@@ -64,7 +66,7 @@ Rule testing does not deliver webhooks or mutate cooldown state.
 
 ## Test Plan
 
-- First matching webhook calls `WebhookClient` once and records delivery time.
+- First matching webhook queues one outbox row; successful worker delivery records delivery time.
 - A second match within cooldown remains matched but does not call the webhook.
 - The response includes the rule in `suppressedRules`.
 - A match after cooldown calls the webhook again.
@@ -82,4 +84,4 @@ Rule testing does not deliver webhooks or mutate cooldown state.
 - Cooldown state is durable across application restarts.
 - Database-backed state is protected by a unique `(rule_id, scope_key)` constraint and serialized during delivery checks.
 - Existing API fields remain compatible; `cooldownSeconds` and `suppressedRules` are additive.
-- Transactional outbox, delivery history, dead-letter handling, and asynchronous retries remain later roadmap items.
+- Transactional outbox persistence, delivery history, dead-letter handling, and asynchronous retries were implemented in the subsequent webhook-delivery slices.

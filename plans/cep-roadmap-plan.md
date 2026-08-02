@@ -164,7 +164,7 @@ Implemented on 2026-08-02 as the first asynchronous delivery slice:
 - Event persistence, rule evaluation, trigger reservations, and eligible webhook intents commit in one transaction.
 - Removed outbound HTTP calls from the event-ingestion path.
 - Added immutable callback URL, rule-name, payload, scope, trigger, and deduplication snapshots.
-- Added `PENDING` delivery state with attempt and scheduling fields for the future worker.
+- Added `PENDING` delivery state with attempt and scheduling fields consumed by the delivery worker.
 - Added unique delivery keys for `EVERY_MATCH`, `EDGE`, and `ONCE_PER_WINDOW` actions.
 - Added pending reservations for cooldown-scoped and once-per-window actions to prevent duplicate queued work.
 - Added additive `queuedRules` information to event responses.
@@ -187,6 +187,17 @@ Implemented on 2026-08-02 as the second asynchronous delivery slice:
 - Worker settings are configurable through application properties and Docker Compose environment variables.
 
 Webhook delivery is now asynchronous, automatic, and observable through the delivery-history API and UI.
+
+## Implemented: Webhook Delivery History
+
+Implemented on 2026-08-02 as the third asynchronous delivery slice:
+
+- JWT-protected list, detail, and manual-retry endpoints operate on the existing outbox rows.
+- The Next.js Deliveries page provides server-side pagination and filters for status, rule, event, date range, and destination or rule-name search.
+- Delivery details show the stored payload, attempts, HTTP result, latest error, timestamps, trigger metadata, and manual-retry time.
+- Manual retry requeues the same `DEAD_LETTER` row, preserving its identity and delivery history.
+- Manual refresh is always available. Optional five-second refresh runs only while enabled and active rows are visible; it is off by default.
+- End-to-end manual verification covered successful delivery, retry exhaustion, dead-lettering, retrying the same row, filtering, idempotent event replay, and idempotency conflict handling.
 
 ## Completed Asynchronous Delivery Sequence
 
@@ -220,7 +231,7 @@ Plan: [`webhook-delivery-history-plan.md`](webhook-delivery-history-plan.md)
 - Add a Deliveries page to the Next.js console.
 - Show status, rule/event correlation, attempts, timing, and latest errors.
 - Allow controlled manual retry of dead-lettered rows without duplicating delivery intent.
-- Provide a user-controlled auto-refresh toggle and manual refresh action for active deliveries.
+- Provide a user-controlled auto-refresh toggle, off by default, and a manual refresh action for active deliveries.
 
 ## Later Assessment Roadmap
 

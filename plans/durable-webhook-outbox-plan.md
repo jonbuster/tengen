@@ -4,9 +4,11 @@
 
 Create a durable webhook outbox so a matched event and its webhook delivery intent are committed in the same database transaction. This first asynchronous delivery slice is implemented.
 
+The completed ingestion path stores an immutable callback and payload snapshot, returns queued-rule information without claiming delivery success, and performs no callback HTTP request before the event transaction commits.
+
 ## Problem
 
-`EventService` currently calls `WebhookClient` while processing `POST /api/events`. This couples event acceptance to an external HTTP service and creates two reliability risks:
+Before this slice, `EventService` called `WebhookClient` while processing `POST /api/events`. That coupled event acceptance to an external HTTP service and created two reliability risks:
 
 - a slow callback delays the event-ingestion response;
 - a webhook can succeed remotely and then be duplicated if the local database transaction rolls back or the process stops before commit.
@@ -91,7 +93,7 @@ Asynchronous delivery introduces a period where a webhook is eligible but not ye
 
 For `EDGE`, the action state stores the pending outbox ID as well as the reserved
 match state. A later non-match may reset the current edge before delivery
-completes; a future worker must not let an older outbox completion overwrite that newer state.
+completes; worker finalization must not let an older outbox completion overwrite that newer state.
 
 If the current action-state tables cannot express a pending reservation safely, add a nullable outbox reference or an explicit pending flag rather than overloading `lastDeliveredAt`.
 

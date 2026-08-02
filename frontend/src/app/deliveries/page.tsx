@@ -79,7 +79,7 @@ export default function DeliveriesPage() {
     pageSize: 25,
   });
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [autoRefresh, setAutoRefresh] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -141,7 +141,6 @@ export default function DeliveriesPage() {
 
   const columns = useMemo<GridColDef<WebhookDeliverySummary>[]>(
     () => [
-      { field: "id", headerName: "ID", width: 75 },
       {
         field: "status",
         headerName: "Status",

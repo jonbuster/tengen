@@ -28,11 +28,12 @@ Its architecture applies core CEP patterns found in platforms such as Esper, Sid
 - **Windowed Aggregates** — `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX` with event-time boundaries
 - **Keyed Aggregates** — maintain independent windows using fields such as `data.userId`
 - **Webhook Delivery** — matched intents are durably queued in PostgreSQL, then delivered asynchronously with retries and dead-letter handling
+- **Delivery History** — authenticated admins can filter delivery records, inspect payload and failure details, manually retry dead-lettered work, and optionally enable live refresh
 - **Webhook Cooldown** — durable global and keyed cooldown state; suppressed matches remain visible in `suppressedRules`
 - **Webhook Trigger Modes** — `EVERY_MATCH`, durable `EDGE` delivery on false-to-true transitions, or durable `ONCE_PER_WINDOW` delivery for aggregate rules
 - **Event Ingestion** — POST events to `/api/events` with a required `X-API-Key` header
 - **Event Idempotency** — optional API-key-scoped `Idempotency-Key` support prevents duplicate persistence, rule evaluation, aggregate contribution, and webhook delivery during retries
-- **Admin Console** — full CRUD for rules, a visual condition builder, rule tester, and API key management
+- **Admin Console** — full CRUD for rules, a visual condition builder, rule tester, API key management, and webhook delivery operations
 - **JWT Auth** — access + refresh tokens stored in **httpOnly cookies**; the browser never sees a JWT
 - **Secure by Default** — server-side token refresh, BCrypt-hashed admin credentials, hashed and revocable API keys
 
@@ -79,8 +80,9 @@ Its architecture applies core CEP patterns found in platforms such as Esper, Sid
 - **Backend** (`tengen/`) — Spring Boot REST API.
   - `/api/auth/login`, `/api/auth/refresh` — JWT auth (access 15 min, refresh 7 days)
   - `/api/rules/**`, `/api/keys/**` — JWT-protected admin API
+  - `/api/webhook-deliveries/**` — JWT-protected delivery history, diagnostics, and manual retry API
   - `/api/events` — API-key-only event ingestion
-- **Database** — PostgreSQL 17, managed by Docker Compose.
+- **Database** — PostgreSQL 17, managed by Docker Compose. Accepted events, trigger reservations, idempotency records, and webhook outbox state are durable across application restarts.
 
 ## Quick Start (Development)
 
@@ -135,6 +137,9 @@ docker compose -f tengen/docker-compose.yml up -d --build frontend
 | `WEBHOOK_WORKER_ENABLED` | `true` | Enable automatic asynchronous webhook delivery |
 | `WEBHOOK_WORKER_POLL_INTERVAL_MS` / `WEBHOOK_WORKER_BATCH_SIZE` | `1000` / `25` | Worker polling interval and claim batch size |
 | `WEBHOOK_WORKER_MAX_ATTEMPTS` | `8` | Maximum delivery attempts before dead-lettering |
+| `WEBHOOK_WORKER_BASE_DELAY_MS` / `WEBHOOK_WORKER_MAX_DELAY_MS` | `5000` / `900000` | Base and maximum retry backoff |
+| `WEBHOOK_WORKER_LEASE_DURATION_MS` | `300000` | Claim lease used to recover work after a stopped worker |
+| `WEBHOOK_WORKER_CONNECT_TIMEOUT_MS` / `WEBHOOK_WORKER_READ_TIMEOUT_MS` | `3000` / `5000` | Per-attempt callback connection and response timeouts |
 
 ### Frontend
 
@@ -188,11 +193,11 @@ Implemented foundations include event ingestion, configurable rule evaluation, k
 
 The approved implementation sequence replaces synchronous webhook delivery with a durable, observable pipeline:
 
-The durable outbox, automatic delivery worker, and delivery history slices are implemented.
+The durable outbox, automatic delivery worker, and delivery history slices are implemented. Event ingestion now commits eligible webhook intent and returns without waiting for the callback. The worker claims committed rows, records retries and terminal failures, and the Deliveries page exposes those states to authenticated admins.
 
 1. **Durable webhook outbox (implemented)** — commit webhook delivery intent in the same transaction as the accepted event.
 2. **Background delivery worker (implemented)** — claim queued deliveries safely, retry transient failures, and dead-letter exhausted work.
-3. **Delivery history (implemented)** — provide admin APIs and a console page for delivery status, diagnostics, and controlled manual retry.
+3. **Delivery history (implemented)** — provide admin APIs and a console page for delivery status, diagnostics, and controlled manual retry. Auto-refresh is off by default and can be enabled from the page when a near-real-time view is useful.
 
 Detailed plans:
 

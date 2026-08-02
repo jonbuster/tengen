@@ -1,5 +1,11 @@
 # Event Processor Webapp — Plan
 
+## Status: Implemented and evolved
+
+The Spring Boot event-ingestion and rule-processing baseline is implemented. The original Thymeleaf UI described below was subsequently replaced by the implemented [Next.js and MUI migration](nextjs-mui-migration-plan.md), and synchronous webhook calls were replaced by the durable [outbox](durable-webhook-outbox-plan.md), [background worker](webhook-delivery-worker-plan.md), and [delivery history](webhook-delivery-history-plan.md) slices.
+
+This document retains the original v1 design context; `README.md` and `cep-roadmap-plan.md` describe the current architecture and completed capabilities.
+
 ## 1. Overview
 
 A Spring Boot event-processing webapp that:
@@ -81,7 +87,7 @@ A rule has a **rule type**, picked from a dropdown when creating it:
 A rule also has an **action**, picked from a dropdown when creating it:
 
 - **LOG** (default) — the result is only returned in the API response. No external call.
-- **WEBHOOK** — on every match, the evaluation result (event + status + rules + aggregates) is POSTed as JSON to the rule's `callbackUrl`, best-effort with a few retries and no auth headers for v1.
+- **WEBHOOK** — eligible matches are stored in the durable outbox and delivered asynchronously as JSON to the rule's snapshotted `callbackUrl`; trigger mode and cooldown settings control whether a match queues work.
 
 A rule matches an event when:
 
@@ -96,7 +102,7 @@ Implementation:
 - CONDITION rules match immediately — no `rule_events` lookback required, but rows are still recorded for future upgrades.
 - Aviator runs as a thread-safe singleton `AviatorEvaluatorInstance`; the event is passed as a nested `Map` env (`type`, `source`, `timestamp`, `data`).
 - Script evaluation errors are logged and treated as non-match — never fail the request.
-- WEBHOOK deliveries are best-effort: synchronous POST with up to 3 retries (short backoff), failures logged but never affect the API response. `callbackUrl` is validated as an HTTP(S) URL when action is WEBHOOK.
+- WEBHOOK delivery is asynchronous: event ingestion commits the delivery intent without waiting for the callback. The worker records attempts, retries transient failures, and dead-letters exhausted or permanent failures. `callbackUrl` is validated as an HTTP(S) URL when action is WEBHOOK.
 
 ## 6. Data Model
 

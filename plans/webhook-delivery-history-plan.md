@@ -12,7 +12,8 @@ The slice is implemented on top of the durable outbox and background worker. It 
 - Added authenticated detail and `DEAD_LETTER` retry endpoints.
 - Added bounded latest HTTP status/error metadata and manual-retry timestamps to outbox history.
 - Added the `/deliveries` admin page with server-side pagination, status/date/rule/event/search filters, detail dialog, payload inspection, and retry confirmation.
-- Added user-controlled five-second polling while visible rows are active, plus manual refresh, last-updated feedback, and local preference persistence.
+- Added user-controlled five-second polling while visible rows are active, plus manual refresh, last-updated feedback, and local preference persistence. Auto-refresh is off by default.
+- Manually verified `PENDING` to `PROCESSING` to `DELIVERED`, retry exhaustion to `DEAD_LETTER`, and manual requeue of the same row back to `DELIVERED`.
 
 ## Problem
 
