@@ -183,11 +183,23 @@ Idempotency records are stored durably in PostgreSQL and the original response i
 
 Implemented foundations include event ingestion, configurable rule evaluation, keyed aggregates, rule testing, synchronous webhook actions, durable webhook cooldown and trigger-window handling, and optional event idempotency keys.
 
-Planned CEP capabilities include:
+The next approved implementation sequence replaces synchronous webhook delivery with a durable, observable pipeline:
 
-- Once-per-window trigger mode
+Planning for all three slices is complete; code implementation remains pending.
+
+1. **Durable webhook outbox** — commit webhook delivery intent in the same transaction as the accepted event.
+2. **Background delivery worker** — claim queued deliveries safely, retry transient failures, and dead-letter exhausted work.
+3. **Delivery history** — provide admin APIs and a console page for delivery status, diagnostics, and controlled manual retry.
+
+Detailed plans:
+
+- [`plans/durable-webhook-outbox-plan.md`](plans/durable-webhook-outbox-plan.md)
+- [`plans/webhook-delivery-worker-plan.md`](plans/webhook-delivery-worker-plan.md)
+- [`plans/webhook-delivery-history-plan.md`](plans/webhook-delivery-history-plan.md)
+
+Later CEP capabilities include:
+
 - Optional event response detail levels and an explicit idempotency replay response header
-- Transactional outbox and asynchronous delivery
 - Rule versioning and audit history
 - Sequence and absence patterns
 - Watermarks and allowed lateness

@@ -25,8 +25,8 @@ Implemented the first correctness-focused slice without changing the public API 
 | Late events can include future events in windows | Implemented |
 | Rule testing omits the candidate event from aggregates | Implemented |
 | Keyed/grouped aggregates | Implemented |
-| Trigger lifecycle and alert deduplication | Cooldown and `EDGE` implemented; once-per-window remains later |
-| Transactional outbox and async actions | Synchronous webhook delivery with retries implemented; outbox/async delivery remains later |
+| Trigger lifecycle and alert deduplication | Cooldown, `EDGE`, and once-per-window implemented |
+| Transactional outbox and async actions | Planned as the next three implementation slices |
 
 ## Implemented: Keyed Aggregates
 
@@ -156,11 +156,43 @@ Implemented durable event-time trigger deduplication for aggregate webhook rules
 - Window records are durable and protect against duplicate delivery when late events revisit an older window.
 - The aggregate value remains the existing rolling event-time aggregate; fixed buckets apply only to trigger deduplication.
 
+## Next Approved Implementation Sequence
+
+The next feature is split into three independently reviewable plans. These plans are complete, but their code implementation is still pending.
+
+### 1. Durable Webhook Outbox
+
+Plan: [`durable-webhook-outbox-plan.md`](durable-webhook-outbox-plan.md)
+
+- Commit webhook delivery intent with the event and trigger reservation.
+- Remove outbound HTTP calls from the ingestion transaction.
+- Deduplicate `EVERY_MATCH`, `EDGE`, and `ONCE_PER_WINDOW` delivery intents.
+- Preserve keyed scopes, cooldown behavior, and idempotent event retries.
+- Add queued-action information to the event response without claiming delivery success.
+
+### 2. Background Webhook Delivery Worker
+
+Plan: [`webhook-delivery-worker-plan.md`](webhook-delivery-worker-plan.md)
+
+- Claim work safely with database locking and leases.
+- Deliver outside database transactions.
+- Retry transient failures with configurable exponential backoff.
+- Recover abandoned work after process failure.
+- Persist success, retry, and dead-letter states.
+
+### 3. Webhook Delivery History
+
+Plan: [`webhook-delivery-history-plan.md`](webhook-delivery-history-plan.md)
+
+- Add paginated, filterable JWT-protected admin APIs.
+- Add a Deliveries page to the Next.js console.
+- Show status, rule/event correlation, attempts, timing, and latest errors.
+- Allow controlled manual retry of dead-lettered rows without duplicating delivery intent.
+
 ## Later Assessment Roadmap
 
-1. Transactional outbox with asynchronous webhook delivery and retries.
-2. Rule lifecycle/versioning and audit history; basic request validation and active toggling are already implemented.
-3. Sequence and absence patterns.
-4. Watermarks and allowed lateness; event-time windows and future-event exclusion are already implemented.
-5. Broker connectors and replay/backfill.
-6. Event API response controls: optionally omit aggregate details for external producers and add an explicit `X-Idempotency-Replayed` response header.
+1. Rule lifecycle/versioning and audit history; basic request validation and active toggling are already implemented.
+2. Sequence and absence patterns.
+3. Watermarks and allowed lateness; event-time windows and future-event exclusion are already implemented.
+4. Broker connectors and replay/backfill.
+5. Event API response controls: optionally omit aggregate details for external producers and add an explicit `X-Idempotency-Replayed` response header.
