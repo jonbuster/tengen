@@ -4,9 +4,21 @@
 
 # Tengen — Complex Event Processing Webapp
 
-Tengen is a rule-driven Complex Event Processing web application for ingesting JSON events, evaluating declarative conditions and time-windowed aggregates, grouping events by business keys, and triggering actions such as webhooks.
+Tengen helps teams turn incoming business events into useful actions. You can define rules such as:
 
-The backend is built with **Spring Boot 4.1**, **Java 21**, **Spring Data JPA**, and **PostgreSQL 17**. The administration console is built with **Next.js 15**, **React 19**, **MUI 6**, and **TanStack Query**. Rules use **Aviator** expressions for condition evaluation.
+- Alert when a payment exceeds a certain amount.
+- Detect multiple failed login attempts from the same user.
+- Count transactions from a customer within a five-minute window.
+- Group activity by user, account, or device.
+- Send a webhook when suspicious or important activity is detected.
+
+Tengen receives JSON events, evaluates them against your rules, tracks activity over time, and reports matching events or triggers automated actions. It is designed to help teams build reliable event-driven workflows without writing custom processing logic for every use case.
+
+The project includes a REST API for event ingestion and a web-based administration console for creating rules, testing event behavior, and managing API keys.
+
+## Technical Overview
+
+The backend is built with **Spring Boot 4.1**, **Java 21**, **Spring Data JPA**, and **PostgreSQL 17**. The administration console uses **Next.js 15**, **React 19**, **MUI 6**, and **TanStack Query**. Rules use **Aviator** expressions for condition evaluation.
 
 Its architecture applies core CEP patterns found in platforms such as Esper, Siddhi, and Apache Flink, while providing a focused REST API and web-based administration console for rules, testing, event ingestion, and API keys.
 
