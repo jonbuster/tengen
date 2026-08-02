@@ -139,18 +139,28 @@ Implemented the first trigger-lifecycle slice for webhook actions:
 
 Implemented a durable rising-edge trigger mode for webhook actions:
 
-- Rules accept `EVERY_MATCH` or `EDGE` trigger modes.
+- Rules accept `EVERY_MATCH`, `EDGE`, or `ONCE_PER_WINDOW` trigger modes.
 - `EDGE` sends on false-to-true transitions and ignores consecutive matches.
 - A failed EDGE delivery remains retryable on the next matching event.
 - EDGE state is scoped by rule and aggregate group key.
 - The rule form exposes trigger mode and cooldown under a collapsed Advanced section.
 
+## Implemented: Once-Per-Window Trigger Mode
+
+Implemented durable event-time trigger deduplication for aggregate webhook rules:
+
+- `ONCE_PER_WINDOW` is valid for webhook aggregate rules with a positive `windowSeconds` value.
+- Delivery state is scoped by rule, aggregate group key, and fixed epoch-aligned event-time window.
+- A successful delivery suppresses later matches in the same window while keeping the rule logically matched.
+- Failed delivery leaves the window available for retry.
+- Window records are durable and protect against duplicate delivery when late events revisit an older window.
+- The aggregate value remains the existing rolling event-time aggregate; fixed buckets apply only to trigger deduplication.
+
 ## Later Assessment Roadmap
 
-1. Once-per-window trigger mode.
-2. Transactional outbox with asynchronous webhook delivery and retries.
-3. Rule lifecycle/versioning and audit history; basic request validation and active toggling are already implemented.
-4. Sequence and absence patterns.
-5. Watermarks and allowed lateness; event-time windows and future-event exclusion are already implemented.
-6. Broker connectors and replay/backfill.
-7. Event API response controls: optionally omit aggregate details for external producers and add an explicit `X-Idempotency-Replayed` response header.
+1. Transactional outbox with asynchronous webhook delivery and retries.
+2. Rule lifecycle/versioning and audit history; basic request validation and active toggling are already implemented.
+3. Sequence and absence patterns.
+4. Watermarks and allowed lateness; event-time windows and future-event exclusion are already implemented.
+5. Broker connectors and replay/backfill.
+6. Event API response controls: optionally omit aggregate details for external producers and add an explicit `X-Idempotency-Replayed` response header.

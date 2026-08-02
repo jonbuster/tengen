@@ -35,6 +35,7 @@ const AGG_TYPES = ["COUNT", "SUM", "AVG", "MIN", "MAX"];
 const TRIGGER_MODES: { value: TriggerMode; label: string }[] = [
   { value: "EVERY_MATCH", label: "Every match" },
   { value: "EDGE", label: "On rising edge" },
+  { value: "ONCE_PER_WINDOW", label: "Once per event-time window" },
 ];
 
 function FieldInfo({ title }: { title: string }) {
@@ -186,7 +187,11 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
                   value={values.triggerMode || "EVERY_MATCH"}
                   onChange={set("triggerMode")}
                   fullWidth
-                  helperText="On rising edge sends a webhook only when the rule changes from not matching to matching."
+                  helperText={
+                    values.triggerMode === "ONCE_PER_WINDOW"
+                      ? "Aggregate webhook rules send once in each fixed event-time window; failed delivery can retry."
+                      : "On rising edge sends a webhook only when the rule changes from not matching to matching."
+                  }
                 >
                   {TRIGGER_MODES.map((mode) => (
                     <MenuItem key={mode.value} value={mode.value}>

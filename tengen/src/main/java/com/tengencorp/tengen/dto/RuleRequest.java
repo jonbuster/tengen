@@ -67,6 +67,11 @@ public record RuleRequest(
     }
 
     public void applyTo(Rule rule) {
+        if (action == RuleAction.WEBHOOK && triggerMode == TriggerMode.ONCE_PER_WINDOW
+            && (ruleType != RuleType.AGGREGATE || windowSeconds == null || windowSeconds <= 0)) {
+            throw new IllegalArgumentException(
+                "ONCE_PER_WINDOW requires a webhook aggregate rule with a positive windowSeconds value");
+        }
         rule.setName(name);
         rule.setRuleType(ruleType);
         rule.setAction(action);

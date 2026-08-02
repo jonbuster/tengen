@@ -1,7 +1,7 @@
 export type RuleType = "CONDITION" | "AGGREGATE";
 export type RuleAction = "LOG" | "WEBHOOK";
 export type AggregateType = "COUNT" | "SUM" | "AVG" | "MIN" | "MAX";
-export type TriggerMode = "EVERY_MATCH" | "EDGE";
+export type TriggerMode = "EVERY_MATCH" | "EDGE" | "ONCE_PER_WINDOW";
 
 export interface Rule {
   id: number;

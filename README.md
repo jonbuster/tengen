@@ -29,7 +29,7 @@ Its architecture applies core CEP patterns found in platforms such as Esper, Sid
 - **Keyed Aggregates** — maintain independent windows using fields such as `data.userId`
 - **Webhook Actions** — synchronous best-effort delivery with up to three attempts and short backoff
 - **Webhook Cooldown** — durable global and keyed cooldown state; suppressed matches remain visible in `suppressedRules`
-- **Webhook Trigger Modes** — `EVERY_MATCH` delivery or durable `EDGE` delivery on false-to-true transitions
+- **Webhook Trigger Modes** — `EVERY_MATCH`, durable `EDGE` delivery on false-to-true transitions, or durable `ONCE_PER_WINDOW` delivery for aggregate rules
 - **Event Ingestion** — POST events to `/api/events` with a required `X-API-Key` header
 - **Event Idempotency** — optional API-key-scoped `Idempotency-Key` support prevents duplicate persistence, rule evaluation, aggregate contribution, and webhook delivery during retries
 - **Admin Console** — full CRUD for rules, a visual condition builder, rule tester, and API key management
@@ -45,6 +45,7 @@ Its architecture applies core CEP patterns found in platforms such as Esper, Sid
 - Webhook cooldowns use processing time and are scoped by rule for global rules or by rule plus group key for keyed rules.
 - Successful webhook delivery starts or refreshes cooldown; failed delivery leaves the cooldown available for retry.
 - `EDGE` webhook triggers fire only when a rule changes from non-matching to matching; a failed delivery remains retryable.
+- `ONCE_PER_WINDOW` webhook triggers fire once per fixed event-time bucket of the aggregate rule's `windowSeconds`; failed delivery remains retryable and keyed rules are scoped independently.
 - Trigger state is scoped by rule and aggregate group key, and rule testing does not change it.
 - A matched rule remains matched when its webhook is suppressed, and the response identifies it through `suppressedRules`.
 - Event idempotency keys are scoped per API key and use a unique request fingerprint; an equivalent retry replays the original response, while a changed payload returns `409 Conflict`.
@@ -180,7 +181,7 @@ Idempotency records are stored durably in PostgreSQL and the original response i
 
 ## CEP Roadmap
 
-Implemented foundations include event ingestion, configurable rule evaluation, keyed aggregates, rule testing, synchronous webhook actions, durable webhook cooldown handling, and optional event idempotency keys.
+Implemented foundations include event ingestion, configurable rule evaluation, keyed aggregates, rule testing, synchronous webhook actions, durable webhook cooldown and trigger-window handling, and optional event idempotency keys.
 
 Planned CEP capabilities include:
 

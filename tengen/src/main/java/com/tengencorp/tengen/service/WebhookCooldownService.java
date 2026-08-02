@@ -2,21 +2,26 @@ package com.tengencorp.tengen.service;
 
 import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.entity.RuleActionState;
+import com.tengencorp.tengen.entity.RuleActionWindow;
 import com.tengencorp.tengen.repository.RuleActionStateRepository;
+import com.tengencorp.tengen.repository.RuleActionWindowRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 
-/** Coordinates durable, per-rule webhook cooldown state. */
+/** Coordinates durable, per-rule webhook cooldown and trigger state. */
 @Service
 public class WebhookCooldownService {
 
     private static final String GLOBAL_SCOPE = "";
 
     private final RuleActionStateRepository stateRepository;
+    private final RuleActionWindowRepository windowRepository;
 
-    public WebhookCooldownService(RuleActionStateRepository stateRepository) {
+    public WebhookCooldownService(RuleActionStateRepository stateRepository,
+                                  RuleActionWindowRepository windowRepository) {
         this.stateRepository = stateRepository;
+        this.windowRepository = windowRepository;
     }
 
     /** Ensures the row exists, then locks it for the duration of delivery. */
@@ -46,5 +51,21 @@ public class WebhookCooldownService {
 
     public void resetEdgeState(RuleActionState state) {
         state.setLastMatched(false);
+    }
+
+    /** Ensures the window row exists, then locks it for the delivery decision. */
+    public RuleActionWindow lockWindow(Rule rule, String groupKey, Instant windowStart) {
+        String scopeKey = groupKey != null ? groupKey : GLOBAL_SCOPE;
+        windowRepository.ensureExists(rule.getId(), scopeKey, windowStart);
+        return windowRepository.findForUpdate(rule.getId(), scopeKey, windowStart)
+            .orElseThrow(() -> new IllegalStateException("Once-per-window state was not created"));
+    }
+
+    public boolean isWindowDelivered(RuleActionWindow state) {
+        return state.getDeliveredAt() != null;
+    }
+
+    public void recordWindowDelivery(RuleActionWindow state, Instant deliveredAt) {
+        state.setDeliveredAt(deliveredAt);
     }
 }

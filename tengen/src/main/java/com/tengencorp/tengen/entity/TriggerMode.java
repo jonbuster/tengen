@@ -5,5 +5,7 @@ public enum TriggerMode {
     /** Deliver a webhook for every logical rule match. */
     EVERY_MATCH,
     /** Deliver a webhook only when the rule changes from non-matching to matching. */
-    EDGE
+    EDGE,
+    /** Deliver a webhook once in each event-time window. */
+    ONCE_PER_WINDOW
 }

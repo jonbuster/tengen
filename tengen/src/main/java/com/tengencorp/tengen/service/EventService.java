@@ -8,6 +8,7 @@ import com.tengencorp.tengen.entity.ApiKey;
 import com.tengencorp.tengen.repository.EventRepository;
 import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.entity.RuleAction;
+import com.tengencorp.tengen.entity.RuleActionWindow;
 import com.tengencorp.tengen.repository.RuleRepository;
 import com.tengencorp.tengen.entity.RuleType;
 import com.tengencorp.tengen.entity.TriggerMode;
@@ -172,7 +173,7 @@ public class EventService {
             }
 
             if (rule.getAction() == RuleAction.WEBHOOK && rule.getCallbackUrl() != null) {
-                if (dispatchWebhook(rule, request, aggregateResult, evaluation.groupKey())) {
+                if (dispatchWebhook(rule, request, event.getOccurredAt(), aggregateResult, evaluation.groupKey())) {
                     suppressedRuleNames.add(rule.getName());
                 }
             }
@@ -214,7 +215,8 @@ public class EventService {
     private record ProcessingResult(Event event, EventResponse response) {
     }
 
-    private boolean dispatchWebhook(Rule rule, EventRequest request, AggregateResult aggregateResult, String groupKey) {
+    private boolean dispatchWebhook(Rule rule, EventRequest request, Instant occurredAt,
+                                    AggregateResult aggregateResult, String groupKey) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("event", request);
         payload.put("status", "accepted");
@@ -227,11 +229,18 @@ public class EventService {
         payload.put("aggregates", aggMap);
 
         var state = needsActionState(rule) ? webhookCooldownService.lockState(rule, groupKey) : null;
+        RuleActionWindow windowState = isOncePerWindowWebhook(rule)
+            ? webhookCooldownService.lockWindow(rule, groupKey, windowStart(occurredAt, rule.getWindowSeconds()))
+            : null;
 
         if (isEdgeWebhook(rule)) {
             if (webhookCooldownService.isEdgeSuppressed(state)) {
                 return false;
             }
+        }
+
+        if (windowState != null && webhookCooldownService.isWindowDelivered(windowState)) {
+            return true;
         }
 
         if (rule.getCooldownSeconds() != null && rule.getCooldownSeconds() > 0) {
@@ -249,13 +258,21 @@ public class EventService {
                 if (isEdgeWebhook(rule)) {
                     webhookCooldownService.recordSuccessfulEdgeDelivery(state);
                 }
+                if (windowState != null) {
+                    webhookCooldownService.recordWindowDelivery(windowState, Instant.now());
+                }
             }
             return false;
         }
 
         boolean delivered = deliverWebhook(rule, payload);
-        if (delivered && isEdgeWebhook(rule)) {
-            webhookCooldownService.recordSuccessfulEdgeDelivery(state);
+        if (delivered) {
+            if (isEdgeWebhook(rule)) {
+                webhookCooldownService.recordSuccessfulEdgeDelivery(state);
+            }
+            if (windowState != null) {
+                webhookCooldownService.recordWindowDelivery(windowState, Instant.now());
+            }
         }
         return false;
     }
@@ -266,10 +283,24 @@ public class EventService {
             && rule.getEffectiveTriggerMode() == TriggerMode.EDGE;
     }
 
+    private boolean isOncePerWindowWebhook(Rule rule) {
+        return rule.getAction() == RuleAction.WEBHOOK
+            && rule.getCallbackUrl() != null
+            && rule.getEffectiveTriggerMode() == TriggerMode.ONCE_PER_WINDOW
+            && rule.getRuleType() == RuleType.AGGREGATE
+            && rule.getWindowSeconds() != null
+            && rule.getWindowSeconds() > 0;
+    }
+
     private boolean needsActionState(Rule rule) {
         return rule.getAction() == RuleAction.WEBHOOK
             && rule.getCallbackUrl() != null
             && (isEdgeWebhook(rule) || (rule.getCooldownSeconds() != null && rule.getCooldownSeconds() > 0));
+    }
+
+    private Instant windowStart(Instant occurredAt, Integer windowSeconds) {
+        long bucket = Math.floorDiv(occurredAt.getEpochSecond(), windowSeconds);
+        return Instant.ofEpochSecond(bucket * windowSeconds);
     }
 
     private boolean hasTriggerScope(Event event, Rule rule, RuleEvaluation evaluation) {
