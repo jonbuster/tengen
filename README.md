@@ -14,204 +14,223 @@ Tengen helps teams turn incoming business events into useful actions. You can de
 
 Tengen receives JSON events, evaluates them against your rules, tracks activity over time, and reports matching events or triggers automated actions. It is designed to help teams build reliable event-driven workflows without writing custom processing logic for every use case.
 
-The project includes a REST API for event ingestion and a web-based administration console for creating rules, testing event behavior, and managing API keys.
+The project includes a REST API for event ingestion and a web-based administration console for creating rules, testing event behavior, managing API keys, and monitoring webhook deliveries.
 
-## Technical Overview
+## What Tengen Lets You Do
 
-The backend is built with **Spring Boot 4.1**, **Java 21**, **Spring Data JPA**, and **PostgreSQL 17**. The administration console uses **Next.js 15**, **React 19**, **MUI 6**, and **TanStack Query**. Rules use **Aviator** expressions for condition evaluation.
+- **Spot important events** using conditions such as payment amount, country, status, or any field in your JSON data.
+- **Find patterns over time** with counts, sums, averages, minimums, and maximums over a time window.
+- **Track each customer independently** by grouping activity by user, account, device, or another business field.
+- **Control notification noise** with cooldowns, rising-edge triggers, and once-per-window delivery.
+- **Send webhooks reliably** without making event producers wait for the receiving service.
+- **Understand delivery failures** from a searchable history page and safely retry dead-lettered work.
+- **Retry event requests safely** without saving, evaluating, or queuing the same logical event twice.
 
-Its architecture applies core CEP patterns found in platforms such as Esper, Siddhi, and Apache Flink, while providing a focused REST API and web-based administration console for rules, testing, event ingestion, and API keys.
+## How It Works
 
-## Features
+1. An administrator creates and tests a rule in the web console.
+2. An application sends a JSON event to Tengen using an API key.
+3. Tengen stores the event and evaluates all relevant active rules.
+4. Eligible webhook actions are committed to a durable queue, so the event request does not wait for the callback endpoint.
+5. A background worker sends each webhook, retries temporary failures, and records the outcome for administrators.
 
-- **Rule Engine** — define CONDITION and AGGREGATE rules with Aviator expressions
-- **Windowed Aggregates** — `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX` with event-time boundaries
-- **Keyed Aggregates** — maintain independent windows using fields such as `data.userId`
-- **Webhook Delivery** — matched intents are durably queued in PostgreSQL, then delivered asynchronously with retries and dead-letter handling
-- **Delivery History** — authenticated admins can filter delivery records, inspect payload and failure details, manually retry dead-lettered work, and optionally enable live refresh
-- **Webhook Cooldown** — durable global and keyed cooldown state; suppressed matches remain visible in `suppressedRules`
-- **Webhook Trigger Modes** — `EVERY_MATCH`, durable `EDGE` delivery on false-to-true transitions, or durable `ONCE_PER_WINDOW` delivery for aggregate rules
-- **Event Ingestion** — POST events to `/api/events` with a required `X-API-Key` header
-- **Event Idempotency** — optional API-key-scoped `Idempotency-Key` support prevents duplicate persistence, rule evaluation, aggregate contribution, and webhook delivery during retries
-- **Admin Console** — full CRUD for rules, a visual condition builder, rule tester, API key management, and webhook delivery operations
-- **JWT Auth** — access + refresh tokens stored in **httpOnly cookies**; the browser never sees a JWT
-- **Secure by Default** — server-side token refresh, BCrypt-hashed admin credentials, hashed and revocable API keys
+An accepted event response reports which rules matched, which webhook actions were queued, and which actions were suppressed. Queued means the delivery is safely stored; it does not claim that the receiving service has already accepted it.
 
-## CEP Capabilities
+## Admin Console
 
-- Rules can match on event type, source, and Aviator conditions.
-- Aggregate rules support global or grouped windows with `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX`.
-- Aggregate windows use event time with an exclusive lower boundary and inclusive current-event boundary.
-- Rule testing includes the candidate event in aggregate calculations without persisting it or triggering webhooks.
-- Webhook cooldowns use processing time and are scoped by rule for global rules or by rule plus group key for keyed rules.
-- Successful worker delivery starts or refreshes cooldown; failed delivery leaves the cooldown available for retry.
-- `EDGE` webhook intents are queued only when a rule changes from non-matching to matching; failed delivery remains retryable.
-- `ONCE_PER_WINDOW` webhook intents are queued once per fixed event-time bucket of the aggregate rule's `windowSeconds`; failed delivery remains retryable and keyed rules are scoped independently.
-- Trigger state is scoped by rule and aggregate group key, and rule testing does not change it.
-- A matched rule remains matched when its webhook is suppressed, and the response identifies it through `suppressedRules`.
-- Event idempotency keys are scoped per API key and use a unique request fingerprint; an equivalent retry replays the original response, while a changed payload returns `409 Conflict`.
-- Different legitimate events, including events with identical data but different timestamps, must use different idempotency keys.
-
-## Tech Stack
-
-| Layer | Technology |
+| Page | What it is for |
 | --- | --- |
-| Backend | Spring Boot 4.1, Java 21, Spring Security, Spring Data JPA |
-| Rules | Aviator (5.4.3) |
-| Frontend | Next.js 15, React 19, MUI 6, TanStack Query, Axios |
-| Database | PostgreSQL 17 |
-| Auth | JJWT (0.12.6) — httpOnly cookies |
+| **Rules** | Create, edit, enable, disable, and delete detection rules. |
+| **Run Test** | Try an event against one or all rules without saving the event or sending webhooks. |
+| **API Keys** | Create scoped ingestion keys, view their status, and revoke them. Raw keys are shown only once. |
+| **Deliveries** | Filter webhook history, inspect attempts and errors, refresh the list, and retry dead-lettered deliveries. |
 
-## Architecture
+Delivery auto-refresh is off by default. It can be enabled when a near-real-time view of active deliveries is useful.
 
-```
-┌────────────────┐     ┌─────────────────────┐     ┌─────────────────┐
-│  Next.js SPA   │────▶│  Next.js Proxy      │────▶│  Spring Boot    │
-│  (:3000)       │     │  /api/proxy/[...]   │     │  API (:8080)    │
-└────────────────┘     └─────────────────────┘     └────────┬────────┘
-                                                            │
-                                                  ┌─────────▼─────────┐
-                                                  │  PostgreSQL 17    │
-                                                  │  (:5432)          │
-                                                  └───────────────────┘
-```
+## Quick Start
 
-- **Frontend** (`frontend/`) — Next.js 15 SPA. All API calls go through the route handler [`/api/proxy/[...path]`](frontend/src/app/api/proxy/[...path]/route.ts), which attaches `Authorization: Bearer` server-side and auto-refreshes on 401.
-- **Backend** (`tengen/`) — Spring Boot REST API.
-  - `/api/auth/login`, `/api/auth/refresh` — JWT auth (access 15 min, refresh 7 days)
-  - `/api/rules/**`, `/api/keys/**` — JWT-protected admin API
-  - `/api/webhook-deliveries/**` — JWT-protected delivery history, diagnostics, and manual retry API
-  - `/api/events` — API-key-only event ingestion
-- **Database** — PostgreSQL 17, managed by Docker Compose. Accepted events, trigger reservations, idempotency records, and webhook outbox state are durable across application restarts.
+For local development, you need Docker, Java 21, and Node.js with npm.
 
-## Quick Start (Development)
+Start PostgreSQL and the Spring Boot backend:
 
 ```bash
-# Terminal 1 — database + backend (devtools auto-restart)
 docker compose -f tengen/docker-compose.yml up -d db
-cd tengen && ./mvnw spring-boot:run
+cd tengen
+./mvnw spring-boot:run
+```
 
-# Terminal 2 — frontend (hot reload)
-cd frontend && npm install
+In another terminal, start the administration console:
+
+```bash
+cd frontend
+npm install
 npm run dev
 ```
 
-- Frontend: http://localhost:3000 — login `admin` / `admin` (default)
-- Backend: http://localhost:8080
+- Admin console: http://localhost:3000
+- Backend API: http://localhost:8080
+- Default development login: `admin` / `admin`
 
-> ⚠️ Change `ADMIN_PASSWORD` and `JWT_SECRET` before any production use.
+> Change `ADMIN_PASSWORD` and `JWT_SECRET` before using Tengen outside local development.
 
-## Production (Docker Compose)
+## Send Your First Event
 
-Builds and runs all three services:
-
-```bash
-docker compose -f tengen/docker-compose.yml up --build -d
-```
-
-| Service | Port | Notes |
-| --- | --- | --- |
-| `db` | 5432 | PostgreSQL 17 |
-| `app` | 8080 | Spring Boot API |
-| `frontend` | 3000 | Next.js SPA (proxy targets `http://app:8080` in the compose network) |
-
-### Rerun only the frontend
-
-```bash
-docker compose -f tengen/docker-compose.yml up -d --build frontend
-```
-
-## Environment Variables
-
-### Backend (`tengen/src/main/resources/application.properties`)
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `JWT_SECRET` | `dev-secret-change-me-please-32-bytes-min` | HMAC key for JWT signing — **must be ≥ 32 bytes; change in production** |
-| `JWT_ACCESS_TTL_MINUTES` | `15` | Access token lifetime |
-| `JWT_REFRESH_TTL_DAYS` | `7` | Refresh token lifetime |
-| `ADMIN_USER` | `admin` | Admin console username (BCrypt-hashed at startup) |
-| `ADMIN_PASSWORD` | `admin` | Admin console password — **change in production** |
-| `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | Comma-separated browser origins allowed for the SPA |
-| `DB_URL` / `DB_USER` / `DB_PASSWORD` | `jdbc:postgresql://localhost:5432/tengen` / `tengen` / `tengen` | PostgreSQL connection |
-| `WEBHOOK_WORKER_ENABLED` | `true` | Enable automatic asynchronous webhook delivery |
-| `WEBHOOK_WORKER_POLL_INTERVAL_MS` / `WEBHOOK_WORKER_BATCH_SIZE` | `1000` / `25` | Worker polling interval and claim batch size |
-| `WEBHOOK_WORKER_MAX_ATTEMPTS` | `8` | Maximum delivery attempts before dead-lettering |
-| `WEBHOOK_WORKER_BASE_DELAY_MS` / `WEBHOOK_WORKER_MAX_DELAY_MS` | `5000` / `900000` | Base and maximum retry backoff |
-| `WEBHOOK_WORKER_LEASE_DURATION_MS` | `300000` | Claim lease used to recover work after a stopped worker |
-| `WEBHOOK_WORKER_CONNECT_TIMEOUT_MS` / `WEBHOOK_WORKER_READ_TIMEOUT_MS` | `3000` / `5000` | Per-attempt callback connection and response timeouts |
-
-### Frontend
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8080` | Backend base URL used by the proxy route handler (baked at build time in Docker) |
-
-Example dev setup with a custom backend origin:
-
-```bash
-NEXT_PUBLIC_API_URL=http://localhost:8080 npm run dev
-```
-
-## Ingesting Events
-
-1. Log in to the admin console → **API Keys**.
-2. Create a key — the raw value (prefix `tg_...`) is shown **once**; store it server-side.
-3. Ingest events with the required `X-API-Key`:
-
-```bash
-curl -X POST http://localhost:8080/api/events \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: <your-raw-key>" \
-  -d '{"type":"transaction","source":"payment-api","data":{"amount":2500,"country":"PH"}}'
-```
-
-Keys are hashed at rest, shown only once at creation, scoped to allowed event types and sources, associated with ingested events, and can be revoked immediately.
-Requests without a valid key return `401`; a valid key that is not allowed to publish the event type or source returns `403`.
-
-### Retrying Event Requests
-
-Producers should send an `Idempotency-Key` header for reliable retries. Create the key once for the logical event and persist it with the producer's outbox or message record. Reuse the same key when retrying after a timeout:
+1. Log in to the admin console and create a rule.
+2. Open **API Keys** and create a key. Save the raw `tg_...` value when it is shown.
+3. Send an event to the ingestion API:
 
 ```bash
 curl -X POST http://localhost:8080/api/events \
   -H "Content-Type: application/json" \
   -H "X-API-Key: <your-raw-key>" \
   -H "Idempotency-Key: payment-123" \
-  -d '{"type":"payment","source":"billing","timestamp":"2026-08-02T10:00:00Z","data":{"amount":100}}'
+  -d '{"type":"payment","source":"billing","data":{"amount":2500,"country":"PH"}}'
 ```
 
-The key is scoped to the API key. A retry with the same key and equivalent payload returns the original response without persisting or evaluating the event again. Reusing a key with a different payload returns `409 Conflict`. Different legitimate events, including events with identical data but different timestamps, must use different keys.
+API keys are hashed at rest and can be restricted by event type and source. An invalid key returns `401 Unauthorized`; a valid key used outside its configured scope returns `403 Forbidden`.
 
-The header is optional for backward compatibility; requests without it continue to be processed normally.
+### Safe Request Retries
 
-Idempotency records are stored durably in PostgreSQL and the original response is saved for replay. The current API does not add a separate replay indicator to the response; the response body remains equivalent to the first successful request.
+`Idempotency-Key` is optional but recommended. Create one key for each logical event and reuse it if the request must be retried.
 
-## CEP Roadmap
+- The same key and equivalent payload replay the original response without processing the event again.
+- The same key with a changed payload returns `409 Conflict`.
+- Two legitimate events must use different keys, even when their data is identical.
 
-Implemented foundations include event ingestion, configurable rule evaluation, keyed aggregates, rule testing, durable webhook outbox persistence, webhook cooldown and trigger-window handling, and optional event idempotency keys.
+Idempotency keys are scoped to the API key that sent the event.
 
-The approved implementation sequence replaces synchronous webhook delivery with a durable, observable pipeline:
+## Technical Reference
 
-The durable outbox, automatic delivery worker, and delivery history slices are implemented. Event ingestion now commits eligible webhook intent and returns without waiting for the callback. The worker claims committed rows, records retries and terminal failures, and the Deliveries page exposes those states to authenticated admins.
+### Rule Behavior
 
-1. **Durable webhook outbox (implemented)** — commit webhook delivery intent in the same transaction as the accepted event.
-2. **Background delivery worker (implemented)** — claim queued deliveries safely, retry transient failures, and dead-letter exhausted work.
-3. **Delivery history (implemented)** — provide admin APIs and a console page for delivery status, diagnostics, and controlled manual retry. Auto-refresh is off by default and can be enabled from the page when a near-real-time view is useful.
+| Concept | Behavior |
+| --- | --- |
+| **Condition rule** | Matches a single event using its type, source, and an Aviator expression. |
+| **Aggregate rule** | Calculates `COUNT`, `SUM`, `AVG`, `MIN`, or `MAX` over an event-time window before comparing it with a threshold. |
+| **Grouping** | Maintains independent aggregate and trigger state for values such as `data.userId`. A blank group keeps the rule global. |
+| **Cooldown** | Suppresses repeated webhook actions for a configured period without changing whether the rule itself matched. |
+| **Every match** | Queues one webhook for every eligible accepted event. |
+| **Edge** | Queues a webhook only when a rule changes from non-matching to matching. |
+| **Once per window** | Queues at most one webhook for each fixed event-time window and group. |
 
-Detailed plans:
+Aggregate windows exclude the lower time boundary and include the current event. Rule testing includes the candidate event in aggregate calculations but does not persist it, change trigger state, or send a webhook.
 
-- [`plans/durable-webhook-outbox-plan.md`](plans/durable-webhook-outbox-plan.md)
-- [`plans/webhook-delivery-worker-plan.md`](plans/webhook-delivery-worker-plan.md)
-- [`plans/webhook-delivery-history-plan.md`](plans/webhook-delivery-history-plan.md)
+### Reliable Webhook Delivery
 
-Later CEP capabilities include:
+```text
+accepted event
+    -> event and webhook intent committed together
+    -> PENDING
+    -> PROCESSING
+       -> DELIVERED
+       -> RETRY_SCHEDULED -> PROCESSING
+       -> DEAD_LETTER
+```
 
-- Optional event response detail levels and an explicit idempotency replay response header
-- Rule versioning and audit history
-- Sequence and absence patterns
-- Watermarks and allowed lateness
-- Broker connectors and replay/backfill
+The outbox row stores an immutable snapshot of the destination and payload. Workers claim committed rows using PostgreSQL locking and leases, perform HTTP requests outside database transactions, and recover expired claims after a restart.
+
+Temporary failures such as timeouts, connection errors, `408`, `429`, and `5xx` responses are retried with bounded exponential backoff. Permanent failures and exhausted retries become `DEAD_LETTER` records. Manual retry requeues the same record rather than creating a duplicate delivery.
+
+Successful worker delivery starts or refreshes cooldown state. A failed attempt does not falsely mark the action as delivered.
+
+### Technology
+
+| Layer | Technology |
+| --- | --- |
+| Backend | Spring Boot 4.1, Java 21, Spring Security, Spring Data JPA |
+| Rules | Aviator 5.4.3 |
+| Frontend | Next.js 15, React 19, MUI 6, TanStack Query, Axios |
+| Database | PostgreSQL 17 |
+| Authentication | JJWT 0.12.6, httpOnly cookies, and hashed API keys |
+
+### Architecture
+
+```mermaid
+flowchart LR
+  Admin["Admin browser"] --> Web["Next.js console and proxy"]
+  Producer["Event producer"] --> App["Spring Boot API and worker"]
+  Web --> App
+  App --> DB["PostgreSQL"]
+  App --> Callback["Webhook endpoint"]
+```
+
+- The Next.js application lives in `frontend/` and sends admin requests through [`/api/proxy/[...path]`](frontend/src/app/api/proxy/[...path]/route.ts). The proxy attaches and refreshes JWT credentials server-side.
+- The Spring Boot service lives in `tengen/` and owns event processing, rule evaluation, persistence, authentication, and webhook delivery.
+- PostgreSQL stores accepted events, rule matches, trigger state, idempotency records, and webhook delivery history.
+
+### API Access
+
+| Endpoint | Access | Purpose |
+| --- | --- | --- |
+| `POST /api/events` | `X-API-Key` | Accept and evaluate producer events. |
+| `/api/auth/login`, `/api/auth/refresh` | Public auth endpoints | Create and refresh an admin session. |
+| `/api/rules/**` | Admin session | Manage and test rules. |
+| `/api/keys/**` | Admin session | Manage ingestion API keys. |
+| `/api/webhook-deliveries/**` | Admin session | Search delivery history, inspect details, and retry dead-lettered work. |
+
+Admin access and refresh tokens are stored in httpOnly cookies, so client-side JavaScript does not read them. API keys are stored as hashes and the raw value is available only when a key is created.
+
+## Configuration
+
+The development defaults work with the included Docker Compose database. Expand the tables below when you need to change deployment or worker behavior.
+
+<details>
+<summary>Backend environment variables</summary>
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DB_URL` / `DB_USER` / `DB_PASSWORD` | `jdbc:postgresql://localhost:5432/tengen` / `tengen` / `tengen` | PostgreSQL connection. |
+| `ADMIN_USER` / `ADMIN_PASSWORD` | `admin` / `admin` | Initial admin credentials. The password is BCrypt-hashed at startup. |
+| `JWT_SECRET` | `dev-secret-change-me-please-32-bytes-min` | JWT signing key. Use at least 32 bytes and change it in production. |
+| `JWT_ACCESS_TTL_MINUTES` / `JWT_REFRESH_TTL_DAYS` | `15` / `7` | Admin access and refresh lifetimes. |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | Browser origins allowed to access the backend. |
+| `WEBHOOK_WORKER_ENABLED` | `true` | Enable automatic webhook delivery. |
+| `WEBHOOK_WORKER_POLL_INTERVAL_MS` / `WEBHOOK_WORKER_INITIAL_DELAY_MS` | `1000` / `1000` | Worker polling and startup delays. |
+| `WEBHOOK_WORKER_BATCH_SIZE` / `WEBHOOK_WORKER_MAX_ATTEMPTS` | `25` / `8` | Claim batch size and attempts before dead-lettering. |
+| `WEBHOOK_WORKER_BASE_DELAY_MS` / `WEBHOOK_WORKER_MAX_DELAY_MS` | `5000` / `900000` | Base and maximum retry backoff. |
+| `WEBHOOK_WORKER_LEASE_DURATION_MS` | `300000` | Claim lease used for restart recovery. |
+| `WEBHOOK_WORKER_CONNECT_TIMEOUT_MS` / `WEBHOOK_WORKER_READ_TIMEOUT_MS` | `3000` / `5000` | Callback connection and response timeouts. |
+
+</details>
+
+<details>
+<summary>Frontend environment variable</summary>
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8080` | Backend origin used by the Next.js proxy. Docker Compose supplies `http://app:8080`. |
+
+</details>
+
+Backend defaults are defined in [`application.properties`](tengen/src/main/resources/application.properties).
+
+## Run the Full Stack with Docker
+
+Build and start PostgreSQL, Spring Boot, and Next.js together:
+
+```bash
+docker compose -f tengen/docker-compose.yml up --build -d
+```
+
+The services are available on ports `5432`, `8080`, and `3000`, respectively.
+
+To rebuild only the frontend:
+
+```bash
+docker compose -f tengen/docker-compose.yml up -d --build frontend
+```
+
+## Roadmap
+
+The durable webhook outbox, background delivery worker, automatic retries, dead-letter handling, and delivery-history console are implemented.
+
+See the [CEP roadmap](plans/cep-roadmap-plan.md) for completed work and future capabilities such as rule versioning, sequence and absence patterns, watermarks, broker connectors, and replay or backfill support.
+
+Detailed webhook implementation plans:
+
+- [Durable webhook outbox](plans/durable-webhook-outbox-plan.md)
+- [Background delivery worker](plans/webhook-delivery-worker-plan.md)
+- [Webhook delivery history](plans/webhook-delivery-history-plan.md)
 
 ## License
 
