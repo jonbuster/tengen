@@ -44,6 +44,10 @@ public class RuleActionWindow {
     @Column(name = "delivered_at")
     private Instant deliveredAt;
 
+    /** Outbox row reserving this window before delivery succeeds. */
+    @Column(name = "pending_outbox_id")
+    private Long pendingOutboxId;
+
     public RuleActionWindow(Rule rule, String scopeKey, Instant windowStart) {
         this.rule = rule;
         this.scopeKey = scopeKey;

@@ -12,6 +12,7 @@ import java.util.Map;
  * @param status     always "accepted"
  * @param matched    whether at least one rule matched
  * @param rules      names of matched rules
+ * @param queuedRules matched webhook rules whose delivery intent was persisted
  * @param aggregates per-rule windowed aggregate results (AGGREGATE matches only)
  * @param suppressedRules matched webhook rules whose delivery was suppressed by cooldown
  */
@@ -20,10 +21,24 @@ public record EventResponse(
         String status,
         boolean matched,
         List<String> rules,
+        List<String> queuedRules,
         Map<String, AggregateResult> aggregates,
         List<String> suppressedRules) {
 
+    public EventResponse {
+        rules = rules != null ? List.copyOf(rules) : List.of();
+        queuedRules = queuedRules != null ? List.copyOf(queuedRules) : List.of();
+        aggregates = aggregates != null ? Map.copyOf(aggregates) : Map.of();
+        suppressedRules = suppressedRules != null ? List.copyOf(suppressedRules) : List.of();
+    }
+
+    /** Backward-compatible constructor for callers using the pre-outbox shape. */
+    public EventResponse(Object event, String status, boolean matched, List<String> rules,
+                         Map<String, AggregateResult> aggregates, List<String> suppressedRules) {
+        this(event, status, matched, rules, List.of(), aggregates, suppressedRules);
+    }
+
     public static EventResponse noMatch(Object event) {
-        return new EventResponse(event, "accepted", false, List.of(), Map.of(), List.of());
+        return new EventResponse(event, "accepted", false, List.of(), List.of(), Map.of(), List.of());
     }
 }

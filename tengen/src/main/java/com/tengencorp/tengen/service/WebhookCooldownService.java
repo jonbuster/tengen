@@ -24,7 +24,7 @@ public class WebhookCooldownService {
         this.windowRepository = windowRepository;
     }
 
-    /** Ensures the row exists, then locks it for the duration of delivery. */
+    /** Ensures the row exists, then locks it for trigger eligibility and reservation. */
     public RuleActionState lockState(Rule rule, String groupKey) {
         String scopeKey = groupKey != null ? groupKey : GLOBAL_SCOPE;
         stateRepository.ensureExists(rule.getId(), scopeKey);
@@ -53,7 +53,7 @@ public class WebhookCooldownService {
         state.setLastMatched(false);
     }
 
-    /** Ensures the window row exists, then locks it for the delivery decision. */
+    /** Ensures the window row exists, then locks it for trigger eligibility and reservation. */
     public RuleActionWindow lockWindow(Rule rule, String groupKey, Instant windowStart) {
         String scopeKey = groupKey != null ? groupKey : GLOBAL_SCOPE;
         windowRepository.ensureExists(rule.getId(), scopeKey, windowStart);

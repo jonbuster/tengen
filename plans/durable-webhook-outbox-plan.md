@@ -1,8 +1,8 @@
 # Durable Webhook Outbox Plan
 
-## Status: Planned — implementation pending
+## Status: Implemented — background worker pending
 
-Create a durable webhook outbox so a matched event and its webhook delivery intent are committed in the same database transaction. This is the first of three asynchronous delivery slices and must be completed before the background worker or delivery-history UI.
+Create a durable webhook outbox so a matched event and its webhook delivery intent are committed in the same database transaction. This first asynchronous delivery slice is implemented; the background worker and delivery-history UI remain separate follow-up slices.
 
 ## Problem
 
@@ -86,6 +86,10 @@ Asynchronous delivery introduces a period where a webhook is eligible but not ye
 - `ONCE_PER_WINDOW`: the outbox unique key reserves the rule, scope, and window immediately. Late events in the same window reuse that reservation.
 - Cooldown: a pending delivery reserves the scope while it is in flight. The cooldown timestamp still begins only after successful delivery by the worker.
 - Terminal failure must remain attached to the original delivery so an admin retry does not create a second logical action.
+
+For `EDGE`, the action state stores the pending outbox ID as well as the reserved
+match state. A later non-match may reset the current edge before delivery
+completes; a future worker must not let an older outbox completion overwrite that newer state.
 
 If the current action-state tables cannot express a pending reservation safely, add a nullable outbox reference or an explicit pending flag rather than overloading `lastDeliveredAt`.
 

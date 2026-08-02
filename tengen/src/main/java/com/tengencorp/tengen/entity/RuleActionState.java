@@ -44,6 +44,10 @@ public class RuleActionState {
     @Column(name = "last_matched")
     private Boolean lastMatched;
 
+    /** Outbox row currently reserving a cooldown- or EDGE-scoped delivery, if any. */
+    @Column(name = "pending_outbox_id")
+    private Long pendingOutboxId;
+
     public RuleActionState(Rule rule, String scopeKey) {
         this.rule = rule;
         this.scopeKey = scopeKey;

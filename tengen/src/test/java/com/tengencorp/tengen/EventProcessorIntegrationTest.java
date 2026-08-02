@@ -3,9 +3,12 @@ package com.tengencorp.tengen;
 import com.tengencorp.tengen.entity.AggregateType;
 import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.entity.RuleAction;
+import com.tengencorp.tengen.entity.WebhookOutbox;
 import com.tengencorp.tengen.repository.RuleRepository;
 import com.tengencorp.tengen.repository.RuleEventRepository;
+import com.tengencorp.tengen.repository.WebhookOutboxRepository;
 import com.tengencorp.tengen.entity.RuleType;
+import com.tengencorp.tengen.entity.WebhookOutboxStatus;
 import com.tengencorp.tengen.service.WebhookClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,11 +48,15 @@ class EventProcessorIntegrationTest {
     @Autowired
     private RuleEventRepository ruleEventRepository;
 
+    @Autowired
+    private WebhookOutboxRepository webhookOutboxRepository;
+
     @MockitoBean
     private WebhookClient webhookClient;
 
     @BeforeEach
     void cleanUp() {
+        webhookOutboxRepository.deleteAll();
         ruleEventRepository.deleteAll();
         ruleRepository.deleteAll();
     }
@@ -335,7 +342,7 @@ class EventProcessorIntegrationTest {
     }
 
     @Test
-    void webhookRuleDispatchesPayloadOnMatch() throws Exception {
+    void webhookRuleQueuesPayloadOnMatch() throws Exception {
         Rule rule = new Rule();
         rule.setName("webhook-rule");
         rule.setRuleType(RuleType.CONDITION);
@@ -351,9 +358,14 @@ class EventProcessorIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(eventJson("transaction", "payment-api", 1500, "PH")))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.matched").value(true));
+            .andExpect(jsonPath("$.matched").value(true))
+            .andExpect(jsonPath("$.queuedRules[0]").value("webhook-rule"));
 
-        verify(webhookClient).deliver(eq("https://example.com/hooks/events"), anyMap());
+        assertThat(webhookOutboxRepository.findAll()).hasSize(1);
+        WebhookOutbox outbox = webhookOutboxRepository.findAll().getFirst();
+        assertThat(outbox.getStatus()).isEqualTo(WebhookOutboxStatus.PENDING);
+        assertThat(outbox.getCallbackUrl()).isEqualTo("https://example.com/hooks/events");
+        verify(webhookClient, never()).deliver(eq("https://example.com/hooks/events"), anyMap());
     }
 
     @Test

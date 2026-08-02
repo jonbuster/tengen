@@ -27,7 +27,7 @@ Its architecture applies core CEP patterns found in platforms such as Esper, Sid
 - **Rule Engine** — define CONDITION and AGGREGATE rules with Aviator expressions
 - **Windowed Aggregates** — `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX` with event-time boundaries
 - **Keyed Aggregates** — maintain independent windows using fields such as `data.userId`
-- **Webhook Actions** — synchronous best-effort delivery with up to three attempts and short backoff
+- **Webhook Outbox** — matched webhook delivery intents are durably queued in PostgreSQL during event processing; background delivery is the next slice
 - **Webhook Cooldown** — durable global and keyed cooldown state; suppressed matches remain visible in `suppressedRules`
 - **Webhook Trigger Modes** — `EVERY_MATCH`, durable `EDGE` delivery on false-to-true transitions, or durable `ONCE_PER_WINDOW` delivery for aggregate rules
 - **Event Ingestion** — POST events to `/api/events` with a required `X-API-Key` header
@@ -43,9 +43,9 @@ Its architecture applies core CEP patterns found in platforms such as Esper, Sid
 - Aggregate windows use event time with an exclusive lower boundary and inclusive current-event boundary.
 - Rule testing includes the candidate event in aggregate calculations without persisting it or triggering webhooks.
 - Webhook cooldowns use processing time and are scoped by rule for global rules or by rule plus group key for keyed rules.
-- Successful webhook delivery starts or refreshes cooldown; failed delivery leaves the cooldown available for retry.
-- `EDGE` webhook triggers fire only when a rule changes from non-matching to matching; a failed delivery remains retryable.
-- `ONCE_PER_WINDOW` webhook triggers fire once per fixed event-time bucket of the aggregate rule's `windowSeconds`; failed delivery remains retryable and keyed rules are scoped independently.
+- A successful worker delivery will start or refresh cooldown; a failed delivery leaves the cooldown available for retry.
+- `EDGE` webhook intents are queued only when a rule changes from non-matching to matching; the queued intent remains retryable by the future worker.
+- `ONCE_PER_WINDOW` webhook intents are queued once per fixed event-time bucket of the aggregate rule's `windowSeconds`; keyed rules are scoped independently.
 - Trigger state is scoped by rule and aggregate group key, and rule testing does not change it.
 - A matched rule remains matched when its webhook is suppressed, and the response identifies it through `suppressedRules`.
 - Event idempotency keys are scoped per API key and use a unique request fingerprint; an equivalent retry replays the original response, while a changed payload returns `409 Conflict`.
@@ -181,13 +181,13 @@ Idempotency records are stored durably in PostgreSQL and the original response i
 
 ## CEP Roadmap
 
-Implemented foundations include event ingestion, configurable rule evaluation, keyed aggregates, rule testing, synchronous webhook actions, durable webhook cooldown and trigger-window handling, and optional event idempotency keys.
+Implemented foundations include event ingestion, configurable rule evaluation, keyed aggregates, rule testing, durable webhook outbox persistence, webhook cooldown and trigger-window handling, and optional event idempotency keys.
 
 The next approved implementation sequence replaces synchronous webhook delivery with a durable, observable pipeline:
 
-Planning for all three slices is complete; code implementation remains pending.
+Planning for all three slices is complete; durable outbox persistence is implemented, while delivery processing and history remain pending.
 
-1. **Durable webhook outbox** — commit webhook delivery intent in the same transaction as the accepted event.
+1. **Durable webhook outbox (implemented)** — commit webhook delivery intent in the same transaction as the accepted event.
 2. **Background delivery worker** — claim queued deliveries safely, retry transient failures, and dead-letter exhausted work.
 3. **Delivery history** — provide admin APIs and a console page for delivery status, diagnostics, and controlled manual retry.
 

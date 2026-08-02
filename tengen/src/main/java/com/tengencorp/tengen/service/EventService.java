@@ -19,8 +19,6 @@ import com.tengencorp.tengen.entity.EventIdempotencyStatus;
 import com.tengencorp.tengen.exception.IdempotencyConflictException;
 import com.tengencorp.tengen.helper.EventRequestHasher;
 import com.tengencorp.tengen.repository.EventIdempotencyRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,19 +32,18 @@ import java.util.Map;
 
 /**
  * Orchestrates event processing: persist the event, evaluate it against every
- * active rule, dispatch webhooks for matches, and build the API response.
+ * active rule, queue webhook delivery intents for matches, and build the API response.
  */
 @Service
 public class EventService {
 
     private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 255;
-    private static final Logger log = LoggerFactory.getLogger(EventService.class);
 
     private final EventRepository eventRepository;
     private final ApiKeyRepository apiKeyRepository;
     private final RuleRepository ruleRepository;
     private final RuleEngine ruleEngine;
-    private final WebhookClient webhookClient;
+    private final WebhookOutboxService webhookOutboxService;
     private final WebhookCooldownService webhookCooldownService;
     private final ApiKeyService apiKeyService;
     private final EventIdempotencyRepository eventIdempotencyRepository;
@@ -54,7 +51,8 @@ public class EventService {
     private final ObjectMapper objectMapper;
 
     public EventService(EventRepository eventRepository, ApiKeyRepository apiKeyRepository,
-                        RuleRepository ruleRepository, RuleEngine ruleEngine, WebhookClient webhookClient,
+                        RuleRepository ruleRepository, RuleEngine ruleEngine,
+                        WebhookOutboxService webhookOutboxService,
                         WebhookCooldownService webhookCooldownService, ApiKeyService apiKeyService,
                         EventIdempotencyRepository eventIdempotencyRepository,
                         EventRequestHasher eventRequestHasher, ObjectMapper objectMapper) {
@@ -62,7 +60,7 @@ public class EventService {
         this.apiKeyRepository = apiKeyRepository;
         this.ruleRepository = ruleRepository;
         this.ruleEngine = ruleEngine;
-        this.webhookClient = webhookClient;
+        this.webhookOutboxService = webhookOutboxService;
         this.webhookCooldownService = webhookCooldownService;
         this.apiKeyService = apiKeyService;
         this.eventIdempotencyRepository = eventIdempotencyRepository;
@@ -141,6 +139,7 @@ public class EventService {
 
         List<Rule> activeRules = ruleRepository.findByActiveTrueOrderByNameAsc();
         List<String> matchedRuleNames = new ArrayList<>();
+        List<String> queuedRuleNames = new ArrayList<>();
         List<String> suppressedRuleNames = new ArrayList<>();
         Map<String, AggregateResult> aggregates = new LinkedHashMap<>();
 
@@ -173,7 +172,11 @@ public class EventService {
             }
 
             if (rule.getAction() == RuleAction.WEBHOOK && rule.getCallbackUrl() != null) {
-                if (dispatchWebhook(rule, request, event.getOccurredAt(), aggregateResult, evaluation.groupKey())) {
+                DeliveryDecision decision = enqueueWebhook(
+                    rule, event, request, aggregateResult, evaluation.groupKey());
+                if (decision == DeliveryDecision.QUEUED) {
+                    queuedRuleNames.add(rule.getName());
+                } else if (decision == DeliveryDecision.SUPPRESSED) {
                     suppressedRuleNames.add(rule.getName());
                 }
             }
@@ -182,7 +185,14 @@ public class EventService {
         boolean matched = !matchedRuleNames.isEmpty();
         return new ProcessingResult(
             event,
-            new EventResponse(request, "accepted", matched, matchedRuleNames, aggregates, suppressedRuleNames));
+            new EventResponse(
+                request,
+                "accepted",
+                matched,
+                matchedRuleNames,
+                queuedRuleNames,
+                aggregates,
+                suppressedRuleNames));
     }
 
     private String normalizeIdempotencyKey(String idempotencyKey) {
@@ -215,19 +225,9 @@ public class EventService {
     private record ProcessingResult(Event event, EventResponse response) {
     }
 
-    private boolean dispatchWebhook(Rule rule, EventRequest request, Instant occurredAt,
-                                    AggregateResult aggregateResult, String groupKey) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("event", request);
-        payload.put("status", "accepted");
-        payload.put("matched", true);
-        payload.put("rules", List.of(rule.getName()));
-        Map<String, Object> aggMap = new LinkedHashMap<>();
-        if (aggregateResult != null) {
-            aggMap.put(rule.getName(), aggregateResult);
-        }
-        payload.put("aggregates", aggMap);
-
+    private DeliveryDecision enqueueWebhook(Rule rule, Event event, EventRequest request,
+                                             AggregateResult aggregateResult, String groupKey) {
+        Instant occurredAt = event.getOccurredAt();
         var state = needsActionState(rule) ? webhookCooldownService.lockState(rule, groupKey) : null;
         RuleActionWindow windowState = isOncePerWindowWebhook(rule)
             ? webhookCooldownService.lockWindow(rule, groupKey, windowStart(occurredAt, rule.getWindowSeconds()))
@@ -235,46 +235,49 @@ public class EventService {
 
         if (isEdgeWebhook(rule)) {
             if (webhookCooldownService.isEdgeSuppressed(state)) {
-                return false;
+                return DeliveryDecision.SUPPRESSED;
             }
         }
 
-        if (windowState != null && webhookCooldownService.isWindowDelivered(windowState)) {
-            return true;
+        if (windowState != null
+            && (webhookCooldownService.isWindowDelivered(windowState)
+                || windowState.getPendingOutboxId() != null)) {
+            return DeliveryDecision.SUPPRESSED;
         }
 
         if (rule.getCooldownSeconds() != null && rule.getCooldownSeconds() > 0) {
-            if (state == null) {
-                state = webhookCooldownService.lockState(rule, groupKey);
-            }
+            // needsActionState(...) guarantees that state is present for cooldown rules.
             Instant now = Instant.now();
-            if (webhookCooldownService.isSuppressed(state, rule.getCooldownSeconds(), now)) {
-                return true;
+            if (state.getPendingOutboxId() != null
+                || webhookCooldownService.isSuppressed(state, rule.getCooldownSeconds(), now)) {
+                return DeliveryDecision.SUPPRESSED;
             }
-
-            boolean delivered = deliverWebhook(rule, payload);
-            if (delivered) {
-                webhookCooldownService.recordSuccessfulDelivery(state, Instant.now());
-                if (isEdgeWebhook(rule)) {
-                    webhookCooldownService.recordSuccessfulEdgeDelivery(state);
-                }
-                if (windowState != null) {
-                    webhookCooldownService.recordWindowDelivery(windowState, Instant.now());
-                }
-            }
-            return false;
         }
 
-        boolean delivered = deliverWebhook(rule, payload);
-        if (delivered) {
+        var enqueueResult = webhookOutboxService.enqueue(
+            rule,
+            event,
+            request,
+            aggregateResult,
+            groupKey,
+            windowState != null ? windowState.getWindowStart() : null);
+        Long outboxId = enqueueResult.outbox().getId();
+
+        if (state != null) {
+            if ((rule.getCooldownSeconds() != null && rule.getCooldownSeconds() > 0)
+                || isEdgeWebhook(rule)) {
+                state.setPendingOutboxId(outboxId);
+            }
             if (isEdgeWebhook(rule)) {
-                webhookCooldownService.recordSuccessfulEdgeDelivery(state);
-            }
-            if (windowState != null) {
-                webhookCooldownService.recordWindowDelivery(windowState, Instant.now());
+                // Reserve the rising edge when queued; delivery success is handled by the worker.
+                state.setLastMatched(true);
             }
         }
-        return false;
+        if (windowState != null) {
+            windowState.setPendingOutboxId(outboxId);
+        }
+
+        return DeliveryDecision.QUEUED;
     }
 
     private boolean isEdgeWebhook(Rule rule) {
@@ -318,11 +321,9 @@ public class EventService {
         webhookCooldownService.resetEdgeState(state);
     }
 
-    private boolean deliverWebhook(Rule rule, Map<String, Object> payload) {
-        boolean delivered = webhookClient.deliver(rule.getCallbackUrl(), payload);
-        if (!delivered) {
-            log.warn("Webhook for rule [{}] could not be delivered to {}", rule.getName(), rule.getCallbackUrl());
-        }
-        return delivered;
+
+    private enum DeliveryDecision {
+        QUEUED,
+        SUPPRESSED
     }
 }

@@ -12,9 +12,9 @@ import java.time.Duration;
 import java.util.Map;
 
 /**
- * Best-effort webhook delivery. POSTs the full evaluation result to a rule's
- * callbackUrl with up to 3 retries and a short backoff. Failures are logged
- * and never surface to the caller.
+ * HTTP client for webhook delivery. The event-ingestion path now persists
+ * delivery intents in the webhook outbox; the background delivery worker will
+ * call this client in the next implementation slice.
  */
 @Service
 public class WebhookClient {

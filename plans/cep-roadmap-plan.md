@@ -26,7 +26,7 @@ Implemented the first correctness-focused slice without changing the public API 
 | Rule testing omits the candidate event from aggregates | Implemented |
 | Keyed/grouped aggregates | Implemented |
 | Trigger lifecycle and alert deduplication | Cooldown, `EDGE`, and once-per-window implemented |
-| Transactional outbox and async actions | Planned as the next three implementation slices |
+| Transactional outbox and async actions | Durable outbox persistence implemented; worker and history remain |
 
 ## Implemented: Keyed Aggregates
 
@@ -119,7 +119,7 @@ The original event processor and frontend migration plans also have these implem
 
 - JSON event ingestion through `POST /api/events` with persisted events.
 - CONDITION rules and windowed AGGREGATE rules using `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX`.
-- Synchronous best-effort webhook delivery with up to three attempts and short backoff.
+- Durable webhook outbox persistence for matched webhook delivery intents.
 - Optional API-key-scoped event idempotency keys with request conflict detection and response replay.
 - REST rule administration, rule testing, JWT-protected admin access, and the Next.js/MUI admin UI.
 - API-key generation, hashed storage, revocation, and event-to-key association through `X-API-Key`.
@@ -156,11 +156,27 @@ Implemented durable event-time trigger deduplication for aggregate webhook rules
 - Window records are durable and protect against duplicate delivery when late events revisit an older window.
 - The aggregate value remains the existing rolling event-time aggregate; fixed buckets apply only to trigger deduplication.
 
+## Implemented: Durable Webhook Outbox
+
+Implemented on 2026-08-02 as the first asynchronous delivery slice:
+
+- Added a durable `webhook_outbox` table/entity in the existing PostgreSQL database.
+- Event persistence, rule evaluation, trigger reservations, and eligible webhook intents commit in one transaction.
+- Removed outbound HTTP calls from the event-ingestion path.
+- Added immutable callback URL, rule-name, payload, scope, trigger, and deduplication snapshots.
+- Added `PENDING` delivery state with attempt and scheduling fields for the future worker.
+- Added unique delivery keys for `EVERY_MATCH`, `EDGE`, and `ONCE_PER_WINDOW` actions.
+- Added pending reservations for cooldown-scoped and once-per-window actions to prevent duplicate queued work.
+- Added additive `queuedRules` information to event responses.
+- Preserved side-effect-free rule testing and idempotent event response replay.
+
+The outbox persists delivery intent only. It does not call webhook endpoints until the background worker is implemented.
+
 ## Next Approved Implementation Sequence
 
-The next feature is split into three independently reviewable plans. These plans are complete, but their code implementation is still pending.
+The feature is split into three independently reviewable plans. The first slice is implemented; the worker and history slices are next.
 
-### 1. Durable Webhook Outbox
+### 1. Durable Webhook Outbox — Implemented
 
 Plan: [`durable-webhook-outbox-plan.md`](durable-webhook-outbox-plan.md)
 
@@ -170,7 +186,7 @@ Plan: [`durable-webhook-outbox-plan.md`](durable-webhook-outbox-plan.md)
 - Preserve keyed scopes, cooldown behavior, and idempotent event retries.
 - Add queued-action information to the event response without claiming delivery success.
 
-### 2. Background Webhook Delivery Worker
+### 2. Background Webhook Delivery Worker — Next
 
 Plan: [`webhook-delivery-worker-plan.md`](webhook-delivery-worker-plan.md)
 

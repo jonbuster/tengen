@@ -107,9 +107,10 @@ On successful delivery, one finalization transaction must:
 - set the outbox row to `DELIVERED`;
 - increment `attemptCount` and set `lastAttemptAt` and `deliveredAt`;
 - clear lease fields and error details;
-- record the successful delivery in `RuleActionState` when cooldown or `EDGE` requires it;
+- record the successful delivery timestamp in `RuleActionState` when cooldown requires it;
 - mark the corresponding `RuleActionWindow` delivered for `ONCE_PER_WINDOW`;
-- clear any pending reservation that points to this outbox row.
+- clear any pending reservation that still points to this outbox row. Do not
+  reassert an old `EDGE` match if a later non-match has already reset that state.
 
 Use the outbox row's stored scope and trigger metadata rather than re-evaluating the current rule definition.
 

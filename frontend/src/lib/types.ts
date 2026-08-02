@@ -85,6 +85,7 @@ export interface EventResponse {
   status: string;
   matched: boolean;
   rules: string[];
+  queuedRules: string[];
   aggregates: Record<string, AggregateResult>;
   suppressedRules: string[];
 }
