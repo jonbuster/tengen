@@ -137,7 +137,7 @@ public class EventService {
             apiKey);
         event = eventRepository.save(event);
 
-        List<Rule> activeRules = ruleRepository.findByActiveTrueOrderByNameAsc();
+        List<Rule> activeRules = ruleRepository.findByActiveTrueAndArchivedAtIsNullOrderByNameAsc();
         List<String> matchedRuleNames = new ArrayList<>();
         List<String> queuedRuleNames = new ArrayList<>();
         List<String> suppressedRuleNames = new ArrayList<>();

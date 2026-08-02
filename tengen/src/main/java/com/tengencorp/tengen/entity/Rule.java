@@ -77,6 +77,12 @@ public class Rule {
     @Column(nullable = false)
     private boolean active = true;
 
+    @Column(nullable = false)
+    private Integer revision = 1;
+
+    @Column(name = "archived_at")
+    private Instant archivedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -87,9 +93,20 @@ public class Rule {
         return triggerMode != null ? triggerMode : TriggerMode.EVERY_MATCH;
     }
 
+    public int getEffectiveRevision() {
+        return revision != null && revision > 0 ? revision : 1;
+    }
+
+    public boolean isArchived() {
+        return archivedAt != null;
+    }
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();
+        if (revision == null || revision < 1) {
+            revision = 1;
+        }
         createdAt = now;
         updatedAt = now;
     }

@@ -15,11 +15,12 @@ public interface RuleActionWindowRepository extends JpaRepository<RuleActionWind
 
     @Modifying
     @Query(value = """
-        insert into rule_action_windows (rule_id, scope_key, window_start)
-        values (:ruleId, :scopeKey, :windowStart)
-        on conflict (rule_id, scope_key, window_start) do nothing
+        insert into rule_action_windows (rule_id, rule_revision, scope_key, window_start)
+        values (:ruleId, :ruleRevision, :scopeKey, :windowStart)
+        on conflict do nothing
         """, nativeQuery = true)
     void ensureExists(@Param("ruleId") Long ruleId,
+                      @Param("ruleRevision") int ruleRevision,
                       @Param("scopeKey") String scopeKey,
                       @Param("windowStart") Instant windowStart);
 
@@ -27,10 +28,16 @@ public interface RuleActionWindowRepository extends JpaRepository<RuleActionWind
     @Query("""
         select state from RuleActionWindow state
         where state.rule.id = :ruleId
+          and coalesce(state.ruleRevision, 1) = :ruleRevision
           and state.scopeKey = :scopeKey
           and state.windowStart = :windowStart
         """)
     Optional<RuleActionWindow> findForUpdate(@Param("ruleId") Long ruleId,
+                                             @Param("ruleRevision") int ruleRevision,
                                              @Param("scopeKey") String scopeKey,
                                              @Param("windowStart") Instant windowStart);
+
+    @Modifying
+    @Query("delete from RuleActionWindow state where state.rule.id = :ruleId")
+    void deleteByRuleId(@Param("ruleId") Long ruleId);
 }

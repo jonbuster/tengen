@@ -167,21 +167,22 @@ public class RuleEngine {
         Instant until = occurredAt;
         AggregateType type = rule.getAggType();
         Long ruleId = rule.getId();
+        int ruleRevision = rule.getEffectiveRevision();
         return switch (type) {
-            case COUNT -> ruleEventRepository.countInWindow(ruleId, since, until, groupKey)
+            case COUNT -> ruleEventRepository.countInWindow(ruleId, ruleRevision, since, until, groupKey)
                 + (includeCandidate ? 1 : 0);
-            case SUM -> ruleEventRepository.sumInWindow(ruleId, since, until, groupKey)
+            case SUM -> ruleEventRepository.sumInWindow(ruleId, ruleRevision, since, until, groupKey)
                 + (includeCandidate ? numericCandidateValue(candidateValue) : 0.0);
-            case AVG -> average(ruleId, since, until, includeCandidate, candidateValue, groupKey);
-            case MIN -> minimum(ruleId, since, until, includeCandidate, candidateValue, groupKey);
-            case MAX -> maximum(ruleId, since, until, includeCandidate, candidateValue, groupKey);
+            case AVG -> average(ruleId, ruleRevision, since, until, includeCandidate, candidateValue, groupKey);
+            case MIN -> minimum(ruleId, ruleRevision, since, until, includeCandidate, candidateValue, groupKey);
+            case MAX -> maximum(ruleId, ruleRevision, since, until, includeCandidate, candidateValue, groupKey);
         };
     }
 
-    private double average(Long ruleId, Instant since, Instant until,
+    private double average(Long ruleId, int ruleRevision, Instant since, Instant until,
                            boolean includeCandidate, Double candidateValue, String groupKey) {
-        double sum = ruleEventRepository.sumInWindow(ruleId, since, until, groupKey);
-        long count = ruleEventRepository.countValuesInWindow(ruleId, since, until, groupKey);
+        double sum = ruleEventRepository.sumInWindow(ruleId, ruleRevision, since, until, groupKey);
+        long count = ruleEventRepository.countValuesInWindow(ruleId, ruleRevision, since, until, groupKey);
         if (includeCandidate && candidateValue != null) {
             sum += candidateValue;
             count++;
@@ -189,18 +190,18 @@ public class RuleEngine {
         return count == 0 ? 0.0 : sum / count;
     }
 
-    private double minimum(Long ruleId, Instant since, Instant until,
+    private double minimum(Long ruleId, int ruleRevision, Instant since, Instant until,
                            boolean includeCandidate, Double candidateValue, String groupKey) {
-        Double minimum = ruleEventRepository.minInWindow(ruleId, since, until, groupKey);
+        Double minimum = ruleEventRepository.minInWindow(ruleId, ruleRevision, since, until, groupKey);
         if (includeCandidate && candidateValue != null) {
             minimum = minimum == null ? candidateValue : Math.min(minimum, candidateValue);
         }
         return minimum != null ? minimum : 0.0;
     }
 
-    private double maximum(Long ruleId, Instant since, Instant until,
+    private double maximum(Long ruleId, int ruleRevision, Instant since, Instant until,
                            boolean includeCandidate, Double candidateValue, String groupKey) {
-        Double maximum = ruleEventRepository.maxInWindow(ruleId, since, until, groupKey);
+        Double maximum = ruleEventRepository.maxInWindow(ruleId, ruleRevision, since, until, groupKey);
         if (includeCandidate && candidateValue != null) {
             maximum = maximum == null ? candidateValue : Math.max(maximum, candidateValue);
         }

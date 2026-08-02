@@ -67,6 +67,7 @@ public class WebhookOutboxService {
             scopeKey,
             triggerMode,
             windowStart,
+            rule.getEffectiveRevision(),
             rule.getCooldownSeconds(),
             deduplicationKey);
         return new EnqueueResult(outboxRepository.save(outbox), true);
@@ -77,10 +78,13 @@ public class WebhookOutboxService {
         String encodedScope = Base64.getUrlEncoder().withoutPadding()
             .encodeToString(scopeKey.getBytes(StandardCharsets.UTF_8));
         return switch (triggerMode) {
-            case EVERY_MATCH -> "EVERY_MATCH:rule=" + rule.getId() + ":event=" + event.getId();
-            case EDGE -> "EDGE:rule=" + rule.getId() + ":event=" + event.getId()
+            case EVERY_MATCH -> "EVERY_MATCH:rule=" + rule.getId() + ":revision="
+                + rule.getEffectiveRevision() + ":event=" + event.getId();
+            case EDGE -> "EDGE:rule=" + rule.getId() + ":revision=" + rule.getEffectiveRevision()
+                + ":event=" + event.getId()
                 + ":scope=" + encodedScope;
             case ONCE_PER_WINDOW -> "ONCE_PER_WINDOW:rule=" + rule.getId()
+                + ":revision=" + rule.getEffectiveRevision()
                 + ":window=" + (windowStart != null ? windowStart.getEpochSecond() : "none")
                 + ":scope=" + encodedScope;
         };

@@ -59,6 +59,10 @@ public class WebhookOutbox {
     @Column(name = "rule_id")
     private Long ruleId;
 
+    /** Immutable revision snapshot; null is treated as revision 1 for legacy rows. */
+    @Column(name = "rule_revision")
+    private Integer ruleRevision;
+
     /** Immutable snapshot used for history after a rule is edited or deleted. */
     @Column(name = "rule_name", nullable = false, length = 100)
     private String ruleName;
@@ -132,8 +136,17 @@ public class WebhookOutbox {
     public WebhookOutbox(Event event, Long ruleId, String ruleName, String callbackUrl,
                          Map<String, Object> payload, String scopeKey, TriggerMode triggerMode,
                          Instant windowStart, Integer cooldownSeconds, String deduplicationKey) {
+        this(event, ruleId, ruleName, callbackUrl, payload, scopeKey, triggerMode,
+            windowStart, null, cooldownSeconds, deduplicationKey);
+    }
+
+    public WebhookOutbox(Event event, Long ruleId, String ruleName, String callbackUrl,
+                         Map<String, Object> payload, String scopeKey, TriggerMode triggerMode,
+                         Instant windowStart, Integer ruleRevision, Integer cooldownSeconds,
+                         String deduplicationKey) {
         this.event = event;
         this.ruleId = ruleId;
+        this.ruleRevision = ruleRevision;
         this.ruleName = ruleName;
         this.callbackUrl = callbackUrl;
         this.payload = payload;
@@ -153,6 +166,10 @@ public class WebhookOutbox {
                          Instant windowStart, String deduplicationKey) {
         this(event, ruleId, ruleName, callbackUrl, payload, scopeKey, triggerMode,
             windowStart, null, deduplicationKey);
+    }
+
+    public int getEffectiveRuleRevision() {
+        return ruleRevision != null && ruleRevision > 0 ? ruleRevision : 1;
     }
 
     @PrePersist

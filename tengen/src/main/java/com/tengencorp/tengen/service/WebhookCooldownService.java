@@ -27,8 +27,9 @@ public class WebhookCooldownService {
     /** Ensures the row exists, then locks it for trigger eligibility and reservation. */
     public RuleActionState lockState(Rule rule, String groupKey) {
         String scopeKey = groupKey != null ? groupKey : GLOBAL_SCOPE;
-        stateRepository.ensureExists(rule.getId(), scopeKey);
-        return stateRepository.findForUpdate(rule.getId(), scopeKey)
+        int revision = rule.getEffectiveRevision();
+        stateRepository.ensureExists(rule.getId(), revision, scopeKey);
+        return stateRepository.findForUpdate(rule.getId(), revision, scopeKey)
             .orElseThrow(() -> new IllegalStateException("Webhook cooldown state was not created"));
     }
 
@@ -56,8 +57,9 @@ public class WebhookCooldownService {
     /** Ensures the window row exists, then locks it for trigger eligibility and reservation. */
     public RuleActionWindow lockWindow(Rule rule, String groupKey, Instant windowStart) {
         String scopeKey = groupKey != null ? groupKey : GLOBAL_SCOPE;
-        windowRepository.ensureExists(rule.getId(), scopeKey, windowStart);
-        return windowRepository.findForUpdate(rule.getId(), scopeKey, windowStart)
+        int revision = rule.getEffectiveRevision();
+        windowRepository.ensureExists(rule.getId(), revision, scopeKey, windowStart);
+        return windowRepository.findForUpdate(rule.getId(), revision, scopeKey, windowStart)
             .orElseThrow(() -> new IllegalStateException("Once-per-window state was not created"));
     }
 

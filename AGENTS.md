@@ -39,3 +39,4 @@
 ## Rules
 - Be succint on output answers.
 - Always ask first before running or creating spring boot integration test.
+- When creating markdown plan files, add the date time today then the name for the naming of file.

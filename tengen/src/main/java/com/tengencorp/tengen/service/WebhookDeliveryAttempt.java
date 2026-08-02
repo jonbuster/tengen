@@ -10,6 +10,7 @@ public record WebhookDeliveryAttempt(
         Long outboxId,
         String leaseToken,
         Long ruleId,
+        int ruleRevision,
         String ruleName,
         String callbackUrl,
         Map<String, Object> payload,

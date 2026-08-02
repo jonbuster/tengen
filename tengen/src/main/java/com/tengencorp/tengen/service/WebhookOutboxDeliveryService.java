@@ -45,6 +45,7 @@ public class WebhookOutboxDeliveryService {
                 outbox.getId(),
                 leaseToken,
                 outbox.getRuleId(),
+                outbox.getEffectiveRuleRevision(),
                 outbox.getRuleName(),
                 outbox.getCallbackUrl(),
                 outbox.getPayload(),
@@ -78,7 +79,8 @@ public class WebhookOutboxDeliveryService {
         if (outbox.getRuleId() != null
             && ((outbox.getCooldownSeconds() != null && outbox.getCooldownSeconds() > 0)
                 || outbox.getTriggerMode() == com.tengencorp.tengen.entity.TriggerMode.EDGE)) {
-            stateRepository.findForUpdate(outbox.getRuleId(), outbox.getScopeKey())
+            stateRepository.findForUpdate(outbox.getRuleId(), outbox.getEffectiveRuleRevision(),
+                    outbox.getScopeKey())
                 .ifPresent(state -> finalizeState(state, outbox, deliveredAt));
         }
 
@@ -86,7 +88,8 @@ public class WebhookOutboxDeliveryService {
             && outbox.getTriggerMode() == com.tengencorp.tengen.entity.TriggerMode.ONCE_PER_WINDOW
             && outbox.getWindowStart() != null) {
             windowRepository.findForUpdate(
-                    outbox.getRuleId(), outbox.getScopeKey(), outbox.getWindowStart())
+                    outbox.getRuleId(), outbox.getEffectiveRuleRevision(),
+                    outbox.getScopeKey(), outbox.getWindowStart())
                 .ifPresent(window -> finalizeWindow(window, outbox, deliveredAt));
         }
         return true;

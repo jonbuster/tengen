@@ -8,11 +8,8 @@ import com.tengencorp.tengen.entity.TriggerMode;
 
 import java.time.Instant;
 
-/**
- * Serialized representation of a {@link Rule} returned by the admin API.
- */
-public record RuleResponse(
-        Long id,
+/** Stable, configuration-only representation stored in a rule revision. */
+public record RuleSnapshot(
         String name,
         RuleType ruleType,
         RuleAction action,
@@ -28,14 +25,10 @@ public record RuleResponse(
         String groupBy,
         Double threshold,
         boolean active,
-        int revision,
-        Instant archivedAt,
-        Instant createdAt,
-        Instant updatedAt) {
+        Instant archivedAt) {
 
-    public static RuleResponse from(Rule rule) {
-        return new RuleResponse(
-            rule.getId(),
+    public static RuleSnapshot from(Rule rule) {
+        return new RuleSnapshot(
             rule.getName(),
             rule.getRuleType(),
             rule.getAction(),
@@ -51,9 +44,6 @@ public record RuleResponse(
             rule.getGroupBy(),
             rule.getThreshold(),
             rule.isActive(),
-            rule.getEffectiveRevision(),
-            rule.getArchivedAt(),
-            rule.getCreatedAt(),
-            rule.getUpdatedAt());
+            rule.getArchivedAt());
     }
 }

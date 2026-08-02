@@ -19,7 +19,8 @@ import java.time.Instant;
 /** Durable delivery state for one rule and one webhook cooldown scope. */
 @Entity
 @Table(name = "rule_action_state", uniqueConstraints = @UniqueConstraint(
-    name = "uk_rule_action_state_rule_scope", columnNames = {"rule_id", "scope_key"}))
+    name = "uk_rule_action_state_rule_revision_scope",
+    columnNames = {"rule_id", "rule_revision", "scope_key"}))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -32,6 +33,9 @@ public class RuleActionState {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "rule_id", nullable = false)
     private Rule rule;
+
+    @Column(name = "rule_revision")
+    private Integer ruleRevision;
 
     /** Empty string is the shared scope for global rules. */
     @Column(name = "scope_key", nullable = false, length = 500)
@@ -50,8 +54,13 @@ public class RuleActionState {
 
     public RuleActionState(Rule rule, String scopeKey) {
         this.rule = rule;
+        this.ruleRevision = rule != null ? rule.getEffectiveRevision() : 1;
         this.scopeKey = scopeKey;
         this.lastMatched = false;
+    }
+
+    public int getEffectiveRuleRevision() {
+        return ruleRevision != null && ruleRevision > 0 ? ruleRevision : 1;
     }
 
     public boolean wasLastMatched() {

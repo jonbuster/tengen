@@ -14,17 +14,25 @@ public interface RuleActionStateRepository extends JpaRepository<RuleActionState
 
     @Modifying
     @Query(value = """
-        insert into rule_action_state (rule_id, scope_key, last_matched)
-        values (:ruleId, :scopeKey, false)
-        on conflict (rule_id, scope_key) do nothing
+        insert into rule_action_state (rule_id, rule_revision, scope_key, last_matched)
+        values (:ruleId, :ruleRevision, :scopeKey, false)
+        on conflict do nothing
         """, nativeQuery = true)
-    void ensureExists(@Param("ruleId") Long ruleId, @Param("scopeKey") String scopeKey);
+    void ensureExists(@Param("ruleId") Long ruleId, @Param("ruleRevision") int ruleRevision,
+                      @Param("scopeKey") String scopeKey);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
         select state from RuleActionState state
-        where state.rule.id = :ruleId and state.scopeKey = :scopeKey
+        where state.rule.id = :ruleId
+          and coalesce(state.ruleRevision, 1) = :ruleRevision
+          and state.scopeKey = :scopeKey
         """)
     Optional<RuleActionState> findForUpdate(@Param("ruleId") Long ruleId,
+                                            @Param("ruleRevision") int ruleRevision,
                                             @Param("scopeKey") String scopeKey);
+
+    @Modifying
+    @Query("delete from RuleActionState state where state.rule.id = :ruleId")
+    void deleteByRuleId(@Param("ruleId") Long ruleId);
 }

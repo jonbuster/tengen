@@ -22,7 +22,10 @@ export default function EditRulePage() {
   });
 
   const mutation = useMutation({
-    mutationFn: (request: RuleRequest) => api.put(`/rules/${id}`, request),
+    mutationFn: (request: RuleRequest) =>
+      api.put(`/rules/${id}`, request, {
+        headers: { "If-Match": `"${rule?.revision ?? 0}"` },
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["rules"] });
       router.push("/rules");
@@ -50,6 +53,9 @@ export default function EditRulePage() {
       <Breadcrumbs sx={{ mb: 2 }}>
         <Link component={NextLink} href="/rules" underline="hover" color="inherit">
           Rules
+        </Link>
+        <Link component={NextLink} href={`/rules/${id}/history`} underline="hover" color="inherit">
+          History
         </Link>
         <Typography color="text.primary">{rule.name}</Typography>
       </Breadcrumbs>

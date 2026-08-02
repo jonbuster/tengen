@@ -20,8 +20,62 @@ export interface Rule {
   groupBy: string | null;
   threshold: number;
   active: boolean;
+  revision: number;
+  archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export type RuleRevisionChangeType =
+  | "CREATED"
+  | "UPDATED"
+  | "ACTIVATED"
+  | "DEACTIVATED"
+  | "ARCHIVED"
+  | "UNARCHIVED"
+  | "RESTORED";
+
+export interface RuleRevisionSummary {
+  id: number;
+  ruleId: number;
+  revision: number;
+  changeType: RuleRevisionChangeType;
+  actor: string;
+  changedAt: string;
+  restoredFromRevision: number | null;
+}
+
+export interface RuleSnapshot {
+  name: string;
+  ruleType: RuleType;
+  action: RuleAction;
+  callbackUrl: string | null;
+  cooldownSeconds: number | null;
+  triggerMode: TriggerMode;
+  eventType: string;
+  source: string;
+  conditionScript: string;
+  windowSeconds: number | null;
+  aggType: AggregateType | null;
+  aggField: string | null;
+  groupBy: string | null;
+  threshold: number;
+  active: boolean;
+  archivedAt: string | null;
+}
+
+export interface RuleRevisionPage {
+  content: RuleRevisionSummary[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
+export interface RuleRevisionDetail {
+  revision: RuleRevisionSummary;
+  snapshotSchemaVersion: number;
+  snapshot: RuleSnapshot;
 }
 
 export interface RuleRequest {
@@ -101,6 +155,7 @@ export interface WebhookDeliverySummary {
   id: number;
   status: WebhookDeliveryStatus;
   ruleId: number | null;
+  ruleRevision: number;
   ruleName: string;
   eventId: number;
   destination: string;

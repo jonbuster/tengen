@@ -41,6 +41,7 @@ An accepted event response reports which rules matched, which webhook actions we
 | Page | What it is for |
 | --- | --- |
 | **Rules** | Create, edit, enable, disable, and delete detection rules. |
+| **Rule history** | Review immutable revisions, archive rules, and restore an earlier configuration. |
 | **Run Test** | Try an event against one or all rules without saving the event or sending webhooks. |
 | **API Keys** | Create scoped ingestion keys, view their status, and revoke them. Raw keys are shown only once. |
 | **Deliveries** | Filter webhook history, inspect attempts and errors, refresh the list, and retry dead-lettered deliveries. |
@@ -57,6 +58,12 @@ Start PostgreSQL and the Spring Boot backend:
 docker compose -f tengen/docker-compose.yml up -d db
 cd tengen
 ./mvnw spring-boot:run
+```
+
+For an existing development database, apply the idempotent rule-versioning schema migration before starting the backend:
+
+```bash
+docker exec -i tengen-db-1 psql -U tengen -d tengen < tengen/src/main/resources/db/rule-versioning.sql
 ```
 
 In another terminal, start the administration console:
@@ -164,7 +171,7 @@ flowchart LR
 | --- | --- | --- |
 | `POST /api/events` | `X-API-Key` | Accept and evaluate producer events. |
 | `/api/auth/login`, `/api/auth/refresh` | Public auth endpoints | Create and refresh an admin session. |
-| `/api/rules/**` | Admin session | Manage and test rules. |
+| `/api/rules/**` | Admin session | Manage, test, archive, restore, and inspect rule revisions. |
 | `/api/keys/**` | Admin session | Manage ingestion API keys. |
 | `/api/webhook-deliveries/**` | Admin session | Search delivery history, inspect details, and retry dead-lettered work. |
 
@@ -224,7 +231,7 @@ docker compose -f tengen/docker-compose.yml up -d --build frontend
 
 The durable webhook outbox, background delivery worker, automatic retries, dead-letter handling, and delivery-history console are implemented.
 
-See the [CEP roadmap](plans/cep-roadmap-plan.md) for completed work and future capabilities such as rule versioning, sequence and absence patterns, watermarks, broker connectors, and replay or backfill support.
+See the [CEP roadmap](plans/cep-roadmap-plan.md) for completed work and future capabilities such as sequence and absence patterns, watermarks, broker connectors, and replay or backfill support.
 
 Detailed webhook implementation plans:
 

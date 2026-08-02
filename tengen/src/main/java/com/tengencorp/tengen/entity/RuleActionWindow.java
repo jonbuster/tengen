@@ -19,8 +19,8 @@ import java.time.Instant;
 /** Durable delivery state for one event-time window and webhook scope. */
 @Entity
 @Table(name = "rule_action_windows", uniqueConstraints = @UniqueConstraint(
-    name = "uk_rule_action_window_scope_start",
-    columnNames = {"rule_id", "scope_key", "window_start"}))
+    name = "uk_rule_action_window_rule_revision_scope_start",
+    columnNames = {"rule_id", "rule_revision", "scope_key", "window_start"}))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -33,6 +33,9 @@ public class RuleActionWindow {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "rule_id", nullable = false)
     private Rule rule;
+
+    @Column(name = "rule_revision")
+    private Integer ruleRevision;
 
     /** Empty string is the shared scope for global rules. */
     @Column(name = "scope_key", nullable = false, length = 500)
@@ -50,7 +53,12 @@ public class RuleActionWindow {
 
     public RuleActionWindow(Rule rule, String scopeKey, Instant windowStart) {
         this.rule = rule;
+        this.ruleRevision = rule != null ? rule.getEffectiveRevision() : 1;
         this.scopeKey = scopeKey;
         this.windowStart = windowStart;
+    }
+
+    public int getEffectiveRuleRevision() {
+        return ruleRevision != null && ruleRevision > 0 ? ruleRevision : 1;
     }
 }

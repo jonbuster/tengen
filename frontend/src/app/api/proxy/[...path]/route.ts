@@ -47,6 +47,10 @@ async function forward(
   if (accessToken) {
     headers["Authorization"] = `Bearer ${accessToken}`;
   }
+  const ifMatch = req.headers.get("if-match");
+  if (ifMatch) {
+    headers["If-Match"] = ifMatch;
+  }
 
   const url = `${API_BASE}/api/${path}${req.nextUrl.search}`;
   const upstream = await fetch(url, {
@@ -63,6 +67,10 @@ async function forward(
   // parse an empty payload and reports a client-side 500.
   if (text.length > 0) {
     responseHeaders["Content-Type"] = "application/json";
+  }
+  const etag = upstream.headers.get("etag");
+  if (etag) {
+    responseHeaders["ETag"] = etag;
   }
   // The Fetch Response API forbids a body for these status codes, even when
   // the body is an empty string.

@@ -235,7 +235,7 @@ Plan: [`webhook-delivery-history-plan.md`](webhook-delivery-history-plan.md)
 
 ## Later Assessment Roadmap
 
-1. Rule lifecycle/versioning and audit history; basic request validation and active toggling are already implemented.
+1. Rule lifecycle/versioning and audit history — implemented with revision-scoped aggregate/trigger state, immutable snapshots, archive/unarchive, restore, and stale-write protection.
 2. Sequence and absence patterns.
 3. Watermarks and allowed lateness; event-time windows and future-event exclusion are already implemented.
 4. Broker connectors and replay/backfill.

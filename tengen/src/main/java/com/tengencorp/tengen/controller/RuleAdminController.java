@@ -1,20 +1,25 @@
 package com.tengencorp.tengen.controller;
+
+import com.tengencorp.tengen.dto.RuleEvaluation;
 import com.tengencorp.tengen.dto.RuleRequest;
 import com.tengencorp.tengen.dto.RuleResponse;
 import com.tengencorp.tengen.dto.RuleResult;
+import com.tengencorp.tengen.dto.RuleRevisionDetail;
+import com.tengencorp.tengen.dto.RuleRevisionPage;
 import com.tengencorp.tengen.dto.RuleTestRequest;
 import com.tengencorp.tengen.dto.RuleTestResponse;
-import com.tengencorp.tengen.exception.NotFoundException;
-import com.tengencorp.tengen.helper.EventJsonParser;
-
 import com.tengencorp.tengen.entity.Event;
 import com.tengencorp.tengen.entity.Rule;
+import com.tengencorp.tengen.helper.EventJsonParser;
 import com.tengencorp.tengen.repository.RuleRepository;
 import com.tengencorp.tengen.service.RuleEngine;
-import com.tengencorp.tengen.dto.RuleEvaluation;
+import com.tengencorp.tengen.service.RuleLifecycleService;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -22,16 +27,15 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * REST admin API for rule management, replacing the Thymeleaf MVC controller.
- * All responses are JSON; mutations are protected by JWT (see SecurityConfig).
- */
+/** JWT-protected REST admin API for current rules and immutable revisions. */
 @RestController
 @RequestMapping("/api/rules")
 public class RuleAdminController {
@@ -39,51 +43,87 @@ public class RuleAdminController {
     private final RuleRepository ruleRepository;
     private final RuleEngine ruleEngine;
     private final EventJsonParser eventJsonParser;
+    private final RuleLifecycleService lifecycleService;
 
     public RuleAdminController(RuleRepository ruleRepository, RuleEngine ruleEngine,
-                               EventJsonParser eventJsonParser) {
+                               EventJsonParser eventJsonParser,
+                               RuleLifecycleService lifecycleService) {
         this.ruleRepository = ruleRepository;
         this.ruleEngine = ruleEngine;
         this.eventJsonParser = eventJsonParser;
+        this.lifecycleService = lifecycleService;
     }
 
     @GetMapping
-    public List<RuleResponse> list() {
-        return ruleRepository.findAll().stream().map(RuleResponse::from).toList();
+    public List<RuleResponse> list(@RequestParam(defaultValue = "false") boolean includeArchived) {
+        if (includeArchived) {
+            return ruleRepository.findAll(org.springframework.data.domain.Sort.by("name"))
+                .stream().map(RuleResponse::from).toList();
+        }
+        return ruleRepository.findByArchivedAtIsNullOrderByNameAsc()
+            .stream().map(RuleResponse::from).toList();
     }
 
     @GetMapping("/{id}")
-    public RuleResponse get(@PathVariable Long id) {
-        return RuleResponse.from(find(id));
+    public ResponseEntity<RuleResponse> get(@PathVariable Long id) {
+        return withEtag(RuleResponse.from(lifecycleService.find(id)));
     }
 
     @PostMapping
     public ResponseEntity<RuleResponse> create(@Valid @RequestBody RuleRequest request) {
-        if (ruleRepository.existsByName(request.name())) {
-            throw new IllegalArgumentException("A rule named '" + request.name() + "' already exists");
-        }
-        Rule rule = ruleRepository.save(request.toEntity());
-        return ResponseEntity.status(HttpStatus.CREATED).body(RuleResponse.from(rule));
+        RuleResponse response = lifecycleService.create(request, actor());
+        return withEtag(ResponseEntity.status(HttpStatus.CREATED), response);
     }
 
     @PutMapping("/{id}")
-    public RuleResponse update(@PathVariable Long id, @Valid @RequestBody RuleRequest request) {
-        Rule rule = find(id);
-        request.applyTo(rule);
-        return RuleResponse.from(ruleRepository.save(rule));
+    public ResponseEntity<RuleResponse> update(
+            @PathVariable Long id,
+            @RequestHeader(value = "If-Match", required = false) String ifMatch,
+            @Valid @RequestBody RuleRequest request) {
+        return withEtag(lifecycleService.update(id, request, ifMatch, actor()));
     }
 
+    /** DELETE is retained as a compatible route but now archives the rule. */
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        ruleRepository.deleteById(id);
+    public ResponseEntity<Void> delete(
+            @PathVariable Long id,
+            @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+        lifecycleService.archive(id, ifMatch, actor());
         return ResponseEntity.noContent().build();
     }
 
     @PatchMapping("/{id}/toggle")
-    public RuleResponse toggle(@PathVariable Long id) {
-        Rule rule = find(id);
-        rule.setActive(!rule.isActive());
-        return RuleResponse.from(ruleRepository.save(rule));
+    public ResponseEntity<RuleResponse> toggle(
+            @PathVariable Long id,
+            @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+        return withEtag(lifecycleService.toggle(id, ifMatch, actor()));
+    }
+
+    @PostMapping("/{id}/unarchive")
+    public ResponseEntity<RuleResponse> unarchive(
+            @PathVariable Long id,
+            @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+        return withEtag(lifecycleService.unarchive(id, ifMatch, actor()));
+    }
+
+    @GetMapping("/{id}/revisions")
+    public RuleRevisionPage revisions(@PathVariable Long id,
+                                      @RequestParam(defaultValue = "0") int page,
+                                      @RequestParam(defaultValue = "25") int size) {
+        return lifecycleService.revisions(id, page, size);
+    }
+
+    @GetMapping("/{id}/revisions/{revision}")
+    public RuleRevisionDetail revision(@PathVariable Long id, @PathVariable int revision) {
+        return lifecycleService.revision(id, revision);
+    }
+
+    @PostMapping("/{id}/revisions/{revision}/restore")
+    public ResponseEntity<RuleResponse> restore(
+            @PathVariable Long id,
+            @PathVariable int revision,
+            @RequestHeader(value = "If-Match", required = false) String ifMatch) {
+        return withEtag(lifecycleService.restore(id, revision, ifMatch, actor()));
     }
 
     @PostMapping("/test")
@@ -93,7 +133,7 @@ public class RuleAdminController {
         if ("all".equals(request.mode())) {
             List<RuleResult> results = new ArrayList<>();
             boolean anyMatched = false;
-            for (Rule rule : ruleRepository.findByActiveTrueOrderByNameAsc()) {
+            for (Rule rule : ruleRepository.findByActiveTrueAndArchivedAtIsNullOrderByNameAsc()) {
                 RuleEvaluation evaluation = ruleEngine.test(event, rule);
                 boolean matched = evaluation.matched(rule);
                 anyMatched = anyMatched || matched;
@@ -115,7 +155,7 @@ public class RuleAdminController {
         if (request.ruleId() == null) {
             throw new IllegalArgumentException("ruleId is required in single mode");
         }
-        Rule rule = find(request.ruleId());
+        Rule rule = lifecycleService.find(request.ruleId());
         RuleEvaluation evaluation = ruleEngine.test(event, rule);
         return RuleTestResponse.single(
             rule,
@@ -126,8 +166,20 @@ public class RuleAdminController {
             event);
     }
 
-    private Rule find(Long id) {
-        return ruleRepository.findById(id)
-            .orElseThrow(() -> new NotFoundException("Rule " + id + " not found"));
+    private String actor() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.getName() != null
+            ? authentication.getName() : "system";
+    }
+
+    private ResponseEntity<RuleResponse> withEtag(RuleResponse response) {
+        return withEtag(ResponseEntity.ok(), response);
+    }
+
+    private ResponseEntity<RuleResponse> withEtag(ResponseEntity.BodyBuilder builder,
+                                                  RuleResponse response) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setETag("\"" + response.revision() + "\"");
+        return builder.headers(headers).body(response);
     }
 }

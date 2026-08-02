@@ -25,7 +25,9 @@ import java.time.Instant;
 @Entity
 @Table(name = "rule_events", indexes = {
     @Index(name = "idx_rule_events_rule_occurred", columnList = "rule_id, occurred_at"),
-    @Index(name = "idx_rule_events_rule_group_occurred", columnList = "rule_id, group_key, occurred_at")
+    @Index(name = "idx_rule_events_rule_group_occurred", columnList = "rule_id, group_key, occurred_at"),
+    @Index(name = "idx_rule_events_rule_revision_group_occurred",
+        columnList = "rule_id, rule_revision, group_key, occurred_at")
 })
 @Getter
 @Setter
@@ -54,6 +56,9 @@ public class RuleEvent {
     @Column(name = "group_key", length = 500)
     private String groupKey;
 
+    @Column(name = "rule_revision")
+    private Integer ruleRevision;
+
     @Column(name = "occurred_at", nullable = false)
     private Instant occurredAt;
 
@@ -73,6 +78,11 @@ public class RuleEvent {
         this.event = event;
         this.value = value;
         this.groupKey = groupKey;
+        this.ruleRevision = rule != null ? rule.getEffectiveRevision() : 1;
         this.occurredAt = occurredAt;
+    }
+
+    public int getEffectiveRuleRevision() {
+        return ruleRevision != null && ruleRevision > 0 ? ruleRevision : 1;
     }
 }
