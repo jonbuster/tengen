@@ -11,6 +11,7 @@ import com.tengencorp.tengen.repository.WebhookOutboxRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,8 +50,36 @@ public class WebhookDeliveryAdminService {
             page,
             size,
             Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
-        Page<WebhookOutbox> results = outboxRepository.search(
-            parsedStatus, ruleId, eventId, from, to, normalizedSearch, pageable);
+        Specification<WebhookOutbox> specification = (root, query, criteriaBuilder) ->
+            criteriaBuilder.conjunction();
+        if (parsedStatus != null) {
+            specification = specification.and((root, query, criteriaBuilder) ->
+                criteriaBuilder.equal(root.get("status"), parsedStatus));
+        }
+        if (ruleId != null) {
+            specification = specification.and((root, query, criteriaBuilder) ->
+                criteriaBuilder.equal(root.get("ruleId"), ruleId));
+        }
+        if (eventId != null) {
+            specification = specification.and((root, query, criteriaBuilder) ->
+                criteriaBuilder.equal(root.get("event").get("id"), eventId));
+        }
+        if (from != null) {
+            specification = specification.and((root, query, criteriaBuilder) ->
+                criteriaBuilder.greaterThanOrEqualTo(root.get("createdAt"), from));
+        }
+        if (to != null) {
+            specification = specification.and((root, query, criteriaBuilder) ->
+                criteriaBuilder.lessThan(root.get("createdAt"), to));
+        }
+        if (normalizedSearch != null) {
+            String pattern = "%" + normalizedSearch.toLowerCase(Locale.ROOT) + "%";
+            specification = specification.and((root, query, criteriaBuilder) ->
+                criteriaBuilder.or(
+                    criteriaBuilder.like(criteriaBuilder.lower(root.get("ruleName")), pattern),
+                    criteriaBuilder.like(criteriaBuilder.lower(root.get("callbackUrl")), pattern)));
+        }
+        Page<WebhookOutbox> results = outboxRepository.findAll(specification, pageable);
         return new WebhookDeliveryPage(
             results.map(this::summary).getContent(),
             results.getNumber(),

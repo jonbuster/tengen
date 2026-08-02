@@ -2,6 +2,7 @@ package com.tengencorp.tengen.service;
 
 import com.tengencorp.tengen.config.WebhookDeliveryProperties;
 import tools.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,7 @@ public class WebhookClient {
         this(objectMapper, new WebhookDeliveryProperties());
     }
 
+    @Autowired
     public WebhookClient(ObjectMapper objectMapper, WebhookDeliveryProperties properties) {
         this.objectMapper = objectMapper;
 

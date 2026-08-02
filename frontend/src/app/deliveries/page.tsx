@@ -115,10 +115,10 @@ export default function DeliveriesPage() {
   });
 
   useEffect(() => {
-    if (deliveryQuery.data) {
-      setLastUpdated(new Date());
+    if (deliveryQuery.isSuccess) {
+      setLastUpdated(new Date(deliveryQuery.dataUpdatedAt));
     }
-  }, [deliveryQuery.data]);
+  }, [deliveryQuery.dataUpdatedAt, deliveryQuery.isSuccess]);
 
   const detailQuery = useQuery<WebhookDeliveryDetail>({
     queryKey: ["webhook-delivery", selectedId],

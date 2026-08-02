@@ -34,7 +34,9 @@ public record WebhookDeliverySummary(
             outbox.getRuleName(),
             outbox.getEvent().getId(),
             destination,
-            outbox.getScopeKey().isBlank() ? null : outbox.getScopeKey(),
+            outbox.getScopeKey() == null || outbox.getScopeKey().isBlank()
+                ? null
+                : outbox.getScopeKey(),
             outbox.getTriggerMode(),
             outbox.getWindowStart(),
             outbox.getAttemptCount(),

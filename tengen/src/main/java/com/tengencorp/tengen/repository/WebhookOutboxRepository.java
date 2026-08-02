@@ -7,36 +7,16 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 
-public interface WebhookOutboxRepository extends JpaRepository<WebhookOutbox, Long> {
+public interface WebhookOutboxRepository extends JpaRepository<WebhookOutbox, Long>,
+                                                JpaSpecificationExecutor<WebhookOutbox> {
 
     Optional<WebhookOutbox> findByDeduplicationKey(String deduplicationKey);
-
-    @Query("""
-        select outbox from WebhookOutbox outbox
-        where (:status is null or outbox.status = :status)
-          and (:ruleId is null or outbox.ruleId = :ruleId)
-          and (:eventId is null or outbox.event.id = :eventId)
-          and (:fromTime is null or outbox.createdAt >= :fromTime)
-          and (:toTime is null or outbox.createdAt < :toTime)
-          and (:search is null
-               or lower(outbox.ruleName) like lower(concat('%', :search, '%'))
-               or lower(outbox.callbackUrl) like lower(concat('%', :search, '%')))
-        """)
-    Page<WebhookOutbox> search(
-        @Param("status") WebhookOutboxStatus status,
-        @Param("ruleId") Long ruleId,
-        @Param("eventId") Long eventId,
-        @Param("fromTime") Instant fromTime,
-        @Param("toTime") Instant toTime,
-        @Param("search") String search,
-        Pageable pageable);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select outbox from WebhookOutbox outbox where outbox.id = :id")

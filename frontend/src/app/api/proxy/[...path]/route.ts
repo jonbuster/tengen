@@ -48,7 +48,7 @@ async function forward(
     headers["Authorization"] = `Bearer ${accessToken}`;
   }
 
-  const url = `${API_BASE}/api/${path}`;
+  const url = `${API_BASE}/api/${path}${req.nextUrl.search}`;
   const upstream = await fetch(url, {
     method: req.method,
     headers,
