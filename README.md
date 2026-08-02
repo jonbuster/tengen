@@ -295,6 +295,7 @@ The development defaults work with the included Docker Compose database. Expand 
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `SPRING_PROFILES_ACTIVE` | empty | Set to `prod` or `production` to enable production startup checks. |
 | `DB_URL` / `DB_USER` / `DB_PASSWORD` | `jdbc:postgresql://localhost:5432/tengen` / `tengen` / `tengen` | PostgreSQL connection. |
 | `ADMIN_USER` / `ADMIN_PASSWORD` | `admin` / `admin` | Initial admin credentials. The password is BCrypt-hashed at startup. |
 | `JWT_SECRET` | `dev-secret-change-me-please-32-bytes-min` | JWT signing key. Use at least 32 bytes and change it in production. |
@@ -331,6 +332,22 @@ admin password, JWT secret, or webhook signing secret is still configured.
 Liveness and readiness are exposed at `/actuator/health/liveness` and
 `/actuator/health/readiness`; Prometheus metrics require an authenticated admin
 request at `/actuator/prometheus`.
+
+For Docker Compose, put deployment-specific values in an ignored
+`tengen/.env` file (or use a secret manager in production):
+
+```dotenv
+SPRING_PROFILES_ACTIVE=prod
+ADMIN_PASSWORD=replace-with-a-strong-password
+JWT_SECRET=replace-with-a-random-secret-at-least-32-characters
+WEBHOOK_SIGNING_SECRET=replace-with-another-random-secret-at-least-32-characters
+```
+
+Start Compose with that file explicitly:
+
+```bash
+docker compose --env-file tengen/.env -f tengen/docker-compose.yml up -d --build
+```
 
 ## Run the Full Stack with Docker
 
