@@ -43,7 +43,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 // Admin APIs use JWT; event ingestion is API-key-only.
                 .requestMatchers("/api/auth/login", "/api/auth/refresh").permitAll()
-                .requestMatchers("/api/rules/**", "/api/keys/**").authenticated()
+                .requestMatchers("/api/rules/**", "/api/keys/**", "/api/webhook-deliveries/**").authenticated()
                 .requestMatchers("/api/events").authenticated()
                 .anyRequest().permitAll())
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)

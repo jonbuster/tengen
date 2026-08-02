@@ -26,7 +26,7 @@ Implemented the first correctness-focused slice without changing the public API 
 | Rule testing omits the candidate event from aggregates | Implemented |
 | Keyed/grouped aggregates | Implemented |
 | Trigger lifecycle and alert deduplication | Cooldown, `EDGE`, and once-per-window implemented |
-| Transactional outbox and async actions | Durable outbox persistence implemented; worker and history remain |
+| Transactional outbox and async actions | Durable outbox, background worker, and delivery history implemented |
 
 ## Implemented: Keyed Aggregates
 
@@ -170,11 +170,27 @@ Implemented on 2026-08-02 as the first asynchronous delivery slice:
 - Added additive `queuedRules` information to event responses.
 - Preserved side-effect-free rule testing and idempotent event response replay.
 
-The outbox persists delivery intent only. It does not call webhook endpoints until the background worker is implemented.
+The outbox persists delivery intent; the implemented background worker now processes those rows asynchronously.
 
-## Next Approved Implementation Sequence
+## Implemented: Background Webhook Delivery Worker
 
-The feature is split into three independently reviewable plans. The first slice is implemented; the worker and history slices are next.
+Implemented on 2026-08-02 as the second asynchronous delivery slice:
+
+- A scheduled worker claims due `PENDING` and `RETRY_SCHEDULED` rows in batches.
+- PostgreSQL `FOR UPDATE SKIP LOCKED` and UUID leases prevent concurrent duplicate claims.
+- Expired leases are automatically claimable after a worker restart or crash.
+- Each worker pass performs one HTTP attempt outside the database transaction.
+- `2xx` responses are marked `DELIVERED`.
+- Timeouts, connection errors, `408`, `429`, and `5xx` responses are retried with exponential backoff and jitter.
+- Permanent `4xx` responses and exhausted retries become `DEAD_LETTER` rows.
+- Successful delivery updates cooldown and once-per-window state only when the matching pending reservation is still current.
+- Worker settings are configurable through application properties and Docker Compose environment variables.
+
+Webhook delivery is now asynchronous, automatic, and observable through the delivery-history API and UI.
+
+## Completed Asynchronous Delivery Sequence
+
+The feature was split into three independently reviewable plans. All three asynchronous delivery slices are now implemented.
 
 ### 1. Durable Webhook Outbox — Implemented
 
@@ -186,7 +202,7 @@ Plan: [`durable-webhook-outbox-plan.md`](durable-webhook-outbox-plan.md)
 - Preserve keyed scopes, cooldown behavior, and idempotent event retries.
 - Add queued-action information to the event response without claiming delivery success.
 
-### 2. Background Webhook Delivery Worker — Next
+### 2. Background Webhook Delivery Worker — Implemented
 
 Plan: [`webhook-delivery-worker-plan.md`](webhook-delivery-worker-plan.md)
 
@@ -196,7 +212,7 @@ Plan: [`webhook-delivery-worker-plan.md`](webhook-delivery-worker-plan.md)
 - Recover abandoned work after process failure.
 - Persist success, retry, and dead-letter states.
 
-### 3. Webhook Delivery History
+### 3. Webhook Delivery History — Implemented
 
 Plan: [`webhook-delivery-history-plan.md`](webhook-delivery-history-plan.md)
 
@@ -204,6 +220,7 @@ Plan: [`webhook-delivery-history-plan.md`](webhook-delivery-history-plan.md)
 - Add a Deliveries page to the Next.js console.
 - Show status, rule/event correlation, attempts, timing, and latest errors.
 - Allow controlled manual retry of dead-lettered rows without duplicating delivery intent.
+- Provide a user-controlled auto-refresh toggle and manual refresh action for active deliveries.
 
 ## Later Assessment Roadmap
 

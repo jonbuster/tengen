@@ -1,8 +1,8 @@
 # Background Webhook Delivery Worker Plan
 
-## Status: Planned — depends on durable webhook outbox
+## Status: Implemented — 2026-08-02
 
-Process committed webhook outbox rows outside the event-ingestion transaction. This is the second asynchronous delivery slice and depends on the data model and enqueue behavior in `durable-webhook-outbox-plan.md`.
+Process committed webhook outbox rows outside the event-ingestion transaction. This second asynchronous delivery slice is implemented and depends on the data model and enqueue behavior in `durable-webhook-outbox-plan.md`.
 
 ## Goal
 
@@ -77,7 +77,7 @@ Do not depend only on in-memory executor state.
 - Capture the HTTP status when available.
 - Respect interruption during shutdown and leave unfinished leases recoverable.
 
-The existing `WebhookClient` can be refactored into a single-attempt client. Retry policy belongs in the worker so attempt state is durable.
+`WebhookClient` performs one attempt per call. Retry policy belongs in the worker so attempt state is durable.
 
 ## Retry Policy
 
@@ -94,7 +94,7 @@ Suggested defaults:
 - maximum attempts: 8;
 - base delay: 5 seconds;
 - maximum delay: 15 minutes;
-- lease duration: 60 seconds;
+- lease duration: 5 minutes;
 - connect timeout: 3 seconds;
 - read timeout: 5 seconds.
 
@@ -170,7 +170,8 @@ Useful counters for a future metrics endpoint:
 - Two workers cannot claim the same row.
 - An expired lease is recovered after a simulated process stop.
 - HTTP calls occur without an open claim transaction or database row lock.
-- Successful delivery updates cooldown, `EDGE`, and window state correctly.
+- Successful delivery records cooldown success, clears the matching `EDGE`
+  reservation without reasserting stale state, and marks the window delivered.
 - Failed delivery does not start cooldown or mark a window delivered.
 - A keyed delivery updates only its own group scope.
 - Application restart retains and resumes pending work.
@@ -182,6 +183,17 @@ Spring Boot integration tests must not be created or run until the user approves
 
 This slice is complete when queued webhooks are delivered after the event transaction commits, transient failures survive restarts and retry automatically, exhausted or permanent failures become durable dead-letter records, and concurrent application instances cannot deliver the same attempt simultaneously.
 
+## Implemented Components
+
+Implemented on 2026-08-02:
+
+- `WebhookDeliveryWorker` scheduled polling with configurable interval and batch size.
+- PostgreSQL `FOR UPDATE SKIP LOCKED` claims with UUID leases and stale-lease recovery.
+- Single-attempt `WebhookClient` with timeout and HTTP status classification.
+- Exponential retry backoff with jitter and maximum-attempt dead-lettering.
+- Transactional success/failure finalization with cooldown and once-per-window state updates.
+- Conditional worker enablement through `WEBHOOK_WORKER_ENABLED` for staged rollout.
+
 ## Operational Rollout
 
 1. Deploy with the worker disabled while verifying the outbox schema if a staged rollout is needed.
@@ -190,6 +202,6 @@ This slice is complete when queued webhooks are delivered after the event transa
 4. Enable remaining instances after confirming safe concurrent claiming.
 5. Alert operationally on growing dead-letter count or oldest-pending age.
 
-## Next Plan
+## Follow-up Plan
 
-Implement [webhook-delivery-history-plan.md](webhook-delivery-history-plan.md) after worker states and retry behavior are stable.
+Operational follow-ups are documented in [webhook-delivery-history-plan.md](webhook-delivery-history-plan.md) and include searchable history, diagnostics, and controlled manual retry.

@@ -1,76 +1,94 @@
 package com.tengencorp.tengen.service;
 
+import com.tengencorp.tengen.config.WebhookDeliveryProperties;
 import tools.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.time.Duration;
 import java.util.Map;
 
 /**
- * HTTP client for webhook delivery. The event-ingestion path now persists
- * delivery intents in the webhook outbox; the background delivery worker will
- * call this client in the next implementation slice.
+ * Performs exactly one HTTP delivery attempt. Retry policy and durable state
+ * transitions belong to the background worker.
  */
 @Service
 public class WebhookClient {
 
-    private static final Logger log = LoggerFactory.getLogger(WebhookClient.class);
-    private static final int MAX_ATTEMPTS = 3;
+    private static final int MAX_ERROR_LENGTH = 1000;
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
 
     public WebhookClient(ObjectMapper objectMapper) {
+        this(objectMapper, new WebhookDeliveryProperties());
+    }
+
+    public WebhookClient(ObjectMapper objectMapper, WebhookDeliveryProperties properties) {
         this.objectMapper = objectMapper;
 
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(Duration.ofSeconds(3));
-        factory.setReadTimeout(Duration.ofSeconds(5));
+        factory.setConnectTimeout(Duration.ofMillis(properties.getConnectTimeoutMs()));
+        factory.setReadTimeout(Duration.ofMillis(properties.getReadTimeoutMs()));
 
         this.restClient = RestClient.builder()
             .requestFactory(factory)
             .build();
     }
 
-    /**
-     * Attempt to deliver the payload. Returns true on success (any attempt), false otherwise.
-     */
-    public boolean deliver(String callbackUrl, Map<String, Object> payload) {
-        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-            try {
-                String body = objectMapper.writeValueAsString(payload);
-                restClient.post()
-                    .uri(callbackUrl)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(body)
-                    .retrieve()
-                    .toBodilessEntity();
-                return true;
-            } catch (Exception e) {
-                log.warn("Webhook delivery attempt {}/{} to {} failed: {}",
-                    attempt, MAX_ATTEMPTS, callbackUrl, e.getMessage());
-                if (attempt < MAX_ATTEMPTS) {
-                    sleep(backoff(attempt));
-                }
-            }
-        }
-        return false;
-    }
-
-    private static long backoff(int attempt) {
-        return (long) Math.pow(2, attempt) * 200L; // 400ms, 800ms
-    }
-
-    private static void sleep(long millis) {
+    public WebhookDeliveryResult deliverOnce(String callbackUrl, Map<String, Object> payload) {
+        long startedAt = System.nanoTime();
+        String body;
         try {
-            Thread.sleep(millis);
-        } catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
+            body = objectMapper.writeValueAsString(payload);
+        } catch (Exception e) {
+            return WebhookDeliveryResult.failure(
+                false, null, truncate(errorMessage(e)), elapsedMs(startedAt));
         }
+
+        try {
+            var response = restClient.post()
+                .uri(callbackUrl)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .toBodilessEntity();
+            int statusCode = response.getStatusCode().value();
+            if (statusCode >= 200 && statusCode < 300) {
+                return WebhookDeliveryResult.success(statusCode, elapsedMs(startedAt));
+            }
+            return WebhookDeliveryResult.failure(
+                statusCode == 408 || statusCode == 429 || statusCode >= 500,
+                statusCode,
+                "Unexpected HTTP status",
+                elapsedMs(startedAt));
+        } catch (RestClientResponseException e) {
+            int statusCode = e.getStatusCode().value();
+            boolean retryable = statusCode == 408 || statusCode == 429 || statusCode >= 500;
+            return WebhookDeliveryResult.failure(
+                retryable, statusCode, truncate(e.getStatusText()), elapsedMs(startedAt));
+        } catch (Exception e) {
+            return WebhookDeliveryResult.failure(
+                true, null, truncate(errorMessage(e)), elapsedMs(startedAt));
+        }
+    }
+
+    private long elapsedMs(long startedAt) {
+        return Duration.ofNanos(System.nanoTime() - startedAt).toMillis();
+    }
+
+    private String errorMessage(Exception exception) {
+        String message = exception.getMessage();
+        return message != null && !message.isBlank() ? message : exception.getClass().getSimpleName();
+    }
+
+    private String truncate(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.length() <= MAX_ERROR_LENGTH ? value : value.substring(0, MAX_ERROR_LENGTH);
     }
 }

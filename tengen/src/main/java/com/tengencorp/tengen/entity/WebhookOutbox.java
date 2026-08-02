@@ -106,6 +106,23 @@ public class WebhookOutbox {
     @Column(name = "last_error", columnDefinition = "text")
     private String lastError;
 
+    @Column(name = "last_status_code")
+    private Integer lastStatusCode;
+
+    @Column(name = "manually_retried_at")
+    private Instant manuallyRetriedAt;
+
+    /** Lease token used to reject stale worker finalization after recovery. */
+    @Column(name = "lease_token", length = 36)
+    private String leaseToken;
+
+    @Column(name = "lease_expires_at")
+    private Instant leaseExpiresAt;
+
+    /** Immutable cooldown configuration snapshot for worker finalization. */
+    @Column(name = "cooldown_seconds")
+    private Integer cooldownSeconds;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -114,7 +131,7 @@ public class WebhookOutbox {
 
     public WebhookOutbox(Event event, Long ruleId, String ruleName, String callbackUrl,
                          Map<String, Object> payload, String scopeKey, TriggerMode triggerMode,
-                         Instant windowStart, String deduplicationKey) {
+                         Instant windowStart, Integer cooldownSeconds, String deduplicationKey) {
         this.event = event;
         this.ruleId = ruleId;
         this.ruleName = ruleName;
@@ -123,10 +140,19 @@ public class WebhookOutbox {
         this.scopeKey = scopeKey;
         this.triggerMode = triggerMode;
         this.windowStart = windowStart;
+        this.cooldownSeconds = cooldownSeconds;
         this.deduplicationKey = deduplicationKey;
         this.status = WebhookOutboxStatus.PENDING;
         this.attemptCount = 0;
         this.nextAttemptAt = Instant.now();
+    }
+
+    /** Backward-compatible constructor for outbox rows created before worker metadata. */
+    public WebhookOutbox(Event event, Long ruleId, String ruleName, String callbackUrl,
+                         Map<String, Object> payload, String scopeKey, TriggerMode triggerMode,
+                         Instant windowStart, String deduplicationKey) {
+        this(event, ruleId, ruleName, callbackUrl, payload, scopeKey, triggerMode,
+            windowStart, null, deduplicationKey);
     }
 
     @PrePersist

@@ -1,8 +1,18 @@
 # Webhook Delivery History Plan
 
-## Status: Planned — depends on durable outbox and delivery worker
+## Status: Implemented — 2026-08-02
 
 Add JWT-protected admin APIs and a Next.js page for inspecting webhook delivery state and manually retrying dead-lettered work. This is the third asynchronous delivery slice.
+
+The slice is implemented on top of the durable outbox and background worker. It uses the existing outbox row as the delivery-history record, so manual retry never creates a second logical delivery.
+
+### Implemented
+
+- Added paginated and filterable `GET /api/webhook-deliveries` list endpoint.
+- Added authenticated detail and `DEAD_LETTER` retry endpoints.
+- Added bounded latest HTTP status/error metadata and manual-retry timestamps to outbox history.
+- Added the `/deliveries` admin page with server-side pagination, status/date/rule/event/search filters, detail dialog, payload inspection, and retry confirmation.
+- Added user-controlled five-second polling while visible rows are active, plus manual refresh, last-updated feedback, and local preference persistence.
 
 ## Problem
 
@@ -25,6 +35,7 @@ Provide searchable delivery history and a controlled manual retry without exposi
 - Add a `/deliveries` page to the Next.js admin console.
 - Show delivery state, rule, event, attempt count, timestamps, destination, and last failure.
 - Allow an admin to requeue a `DEAD_LETTER` delivery.
+- Add an optional Auto-refresh toggle with a manual Refresh action and last-updated timestamp.
 - Keep access behind the existing JWT admin authentication.
 
 ## Out of Scope
@@ -98,7 +109,7 @@ Suggested summary fields:
 
 The detail DTO can additionally include:
 
-- full callback URL for authenticated admins;
+- a sanitized callback destination for authenticated admins (scheme, host, port, and path; no credentials or query string);
 - stored payload;
 - deduplication key;
 - window start;
@@ -127,7 +138,11 @@ Add a `Deliveries` item to the main navigation and create `/deliveries`.
 - Status chips for `PENDING`, `PROCESSING`, `RETRY_SCHEDULED`, `DELIVERED`, and `DEAD_LETTER`.
 - Filters for status, rule, event ID, and date range.
 - Columns for created time, rule, event ID, destination host, status, attempts, next attempt, and last result.
-- Auto-refresh while any visible rows are pending or processing, with a modest interval such as five seconds.
+- Auto-refresh is user-controllable and off/on state is visible in the page controls.
+- When enabled, refetch at a modest interval such as five seconds while visible rows are `PENDING`, `PROCESSING`, or `RETRY_SCHEDULED`.
+- Stop polling when auto-refresh is disabled or no visible rows need active monitoring.
+- Provide a `Refresh now` action regardless of the auto-refresh setting.
+- Show the last successful refresh time; optionally persist the toggle preference in browser storage.
 - Empty, loading, and API-error states consistent with the current rules and keys pages.
 
 ### Detail view
@@ -166,7 +181,11 @@ Add TypeScript types for page responses, delivery summary/detail, status, and re
 
 - Each status renders the expected chip and timestamps.
 - Filters and pagination are sent to the API.
-- Auto-refresh is active only when useful.
+- Auto-refresh can be turned on and off without leaving the page.
+- Auto-refresh polls only while enabled and active rows are visible.
+- Polling stops when disabled or when no visible rows are pending, processing, or retry-scheduled.
+- `Refresh now` works whether auto-refresh is enabled or disabled.
+- The last-updated timestamp changes after a successful fetch.
 - Detail JSON is escaped safely.
 - Retry confirmation invokes the endpoint and refreshes cached list/detail data.
 - Loading, empty, error, and unauthorized states render correctly.
@@ -176,7 +195,7 @@ Spring Boot integration tests must not be created or run until the user approves
 
 ## Acceptance Criteria
 
-This slice is complete when an authenticated admin can find a delivery, understand its current and latest failure state, correlate it to its rule and event, and safely requeue a dead-lettered delivery without creating a second logical outbox item.
+This slice is complete when an authenticated admin can find a delivery, understand its current and latest failure state, correlate it to its rule and event, safely requeue a dead-lettered delivery without creating a second logical outbox item, and choose whether the list behaves as a near-real-time view or a manually refreshed page.
 
 ## Follow-up Features
 

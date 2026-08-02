@@ -27,6 +27,11 @@ public class ApiExceptionHandler {
         return error(HttpStatus.CONFLICT, e.getMessage(), request);
     }
 
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<ErrorResponse> conflict(ConflictException e, HttpServletRequest request) {
+        return error(HttpStatus.CONFLICT, e.getMessage(), request);
+    }
+
     @ExceptionHandler({IllegalArgumentException.class, MethodArgumentTypeMismatchException.class})
     public ResponseEntity<ErrorResponse> badRequest(Exception e, HttpServletRequest request) {
         return error(HttpStatus.BAD_REQUEST, e.getMessage(), request);

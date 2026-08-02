@@ -20,6 +20,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -37,6 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+@TestPropertySource(properties = "tengen.webhook.worker.enabled=false")
 class EventProcessorIntegrationTest {
 
     @Autowired
@@ -365,7 +367,7 @@ class EventProcessorIntegrationTest {
         WebhookOutbox outbox = webhookOutboxRepository.findAll().getFirst();
         assertThat(outbox.getStatus()).isEqualTo(WebhookOutboxStatus.PENDING);
         assertThat(outbox.getCallbackUrl()).isEqualTo("https://example.com/hooks/events");
-        verify(webhookClient, never()).deliver(eq("https://example.com/hooks/events"), anyMap());
+        verify(webhookClient, never()).deliverOnce(eq("https://example.com/hooks/events"), anyMap());
     }
 
     @Test
@@ -387,7 +389,7 @@ class EventProcessorIntegrationTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.matched").value(false));
 
-        verify(webhookClient, never()).deliver(eq("https://example.com/hooks/events"), anyMap());
+        verify(webhookClient, never()).deliverOnce(eq("https://example.com/hooks/events"), anyMap());
     }
 
     @Test

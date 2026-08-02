@@ -67,6 +67,7 @@ public class WebhookOutboxService {
             scopeKey,
             triggerMode,
             windowStart,
+            rule.getCooldownSeconds(),
             deduplicationKey);
         return new EnqueueResult(outboxRepository.save(outbox), true);
     }

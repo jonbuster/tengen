@@ -90,6 +90,49 @@ export interface EventResponse {
   suppressedRules: string[];
 }
 
+export type WebhookDeliveryStatus =
+  | "PENDING"
+  | "PROCESSING"
+  | "RETRY_SCHEDULED"
+  | "DELIVERED"
+  | "DEAD_LETTER";
+
+export interface WebhookDeliverySummary {
+  id: number;
+  status: WebhookDeliveryStatus;
+  ruleId: number | null;
+  ruleName: string;
+  eventId: number;
+  destination: string;
+  scopeKey: string | null;
+  triggerMode: TriggerMode;
+  windowStart: string | null;
+  attemptCount: number;
+  nextAttemptAt: string;
+  lastAttemptAt: string | null;
+  deliveredAt: string | null;
+  lastStatusCode: number | null;
+  lastError: string | null;
+  createdAt: string;
+  manuallyRetriedAt: string | null;
+}
+
+export interface WebhookDeliveryPage {
+  content: WebhookDeliverySummary[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
+export interface WebhookDeliveryDetail {
+  delivery: WebhookDeliverySummary;
+  callbackUrl: string;
+  payload: unknown;
+  deduplicationKey: string;
+  leaseExpiresAt: string | null;
+}
+
 export interface ApiKey {
   id: number;
   name: string;

@@ -1,8 +1,8 @@
 # Durable Webhook Outbox Plan
 
-## Status: Implemented — background worker pending
+## Status: Implemented — 2026-08-02
 
-Create a durable webhook outbox so a matched event and its webhook delivery intent are committed in the same database transaction. This first asynchronous delivery slice is implemented; the background worker and delivery-history UI remain separate follow-up slices.
+Create a durable webhook outbox so a matched event and its webhook delivery intent are committed in the same database transaction. This first asynchronous delivery slice is implemented.
 
 ## Problem
 
@@ -55,12 +55,14 @@ Suggested fields:
 - `attempt_count` — initially `0`.
 - `next_attempt_at` — initially the creation time.
 - `last_attempt_at`, `delivered_at`, and `last_error` — initially null.
+- `cooldown_seconds` — immutable rule-action snapshot used when finalizing successful delivery.
+- `lease_token` and `lease_expires_at` — nullable worker claim fields.
 - `created_at` and `updated_at`.
 
 Indexes and constraints:
 
 - Unique constraint on `deduplication_key`.
-- Index on `(status, next_attempt_at, id)` for the future worker.
+- Index on `(status, next_attempt_at, id)` for the delivery worker.
 - Index on `(rule_id, created_at)` for history filtering.
 - Index on `(event_id)` for event correlation.
 - Store enough immutable rule information that a rule can be edited or deleted without invalidating queued work.
@@ -95,7 +97,7 @@ If the current action-state tables cannot express a pending reservation safely, 
 
 ## Backend Changes
 
-1. Add `WebhookOutboxStatus` with the initial `PENDING` value and the later worker states documented in the worker plan.
+1. Add `WebhookOutboxStatus` with `PENDING` and the worker lifecycle states documented in the worker plan.
 2. Add the `WebhookOutbox` entity and repository.
 3. Extract webhook payload construction from `EventService` into a dedicated factory so queued payloads retain the current contract.
 4. Add a `WebhookOutboxService.enqueue(...)` method that creates the deduplication key and persists the row.
@@ -163,6 +165,6 @@ This slice is complete when event ingestion commits an eligible webhook delivery
 - Existing synchronous retry code should not run alongside outbox delivery for the same event.
 - Old trigger state must remain compatible; introduce nullable reservation fields with safe defaults.
 
-## Next Plan
+## Follow-up Plan
 
-Implement [webhook-delivery-worker-plan.md](webhook-delivery-worker-plan.md) after the outbox write path is stable.
+The outbox write path is consumed by the [webhook-delivery-worker-plan.md](webhook-delivery-worker-plan.md) and [webhook-delivery-history-plan.md](webhook-delivery-history-plan.md) slices.
