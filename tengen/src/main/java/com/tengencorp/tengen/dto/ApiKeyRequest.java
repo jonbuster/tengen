@@ -1,5 +1,6 @@
 package com.tengencorp.tengen.dto;
 
+import com.tengencorp.tengen.entity.ResponseMode;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -17,5 +18,12 @@ public record ApiKeyRequest(
         @Size(max = 100, message = "allowedSources must have at most 100 values")
         List<@NotBlank @Size(max = 100) String> allowedSources,
 
-        Instant expiresAt) {
+        Instant expiresAt,
+
+        ResponseMode responseMode) {
+
+    public ApiKeyRequest(String name, List<String> allowedEventTypes, List<String> allowedSources,
+                         Instant expiresAt) {
+        this(name, allowedEventTypes, allowedSources, expiresAt, null);
+    }
 }

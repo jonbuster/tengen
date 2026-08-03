@@ -1,6 +1,5 @@
 package com.tengencorp.tengen.controller;
 import com.tengencorp.tengen.dto.EventRequest;
-import com.tengencorp.tengen.dto.EventResponse;
 
 import com.tengencorp.tengen.security.ApiKeyPrincipal;
 import com.tengencorp.tengen.service.EventService;
@@ -17,6 +16,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/events")
 public class EventController {
 
+    public static final String IDEMPOTENCY_REPLAYED_HEADER = "X-Idempotency-Replayed";
+
     private final EventService eventService;
 
     public EventController(EventService eventService) {
@@ -24,11 +25,14 @@ public class EventController {
     }
 
     @PostMapping
-    public ResponseEntity<EventResponse> ingest(@Valid @RequestBody EventRequest request,
-                                                Authentication authentication,
-                                                @RequestHeader(value = "Idempotency-Key", required = false)
-                                                String idempotencyKey) {
+    public ResponseEntity<Object> ingest(@Valid @RequestBody EventRequest request,
+                                         Authentication authentication,
+                                         @RequestHeader(value = "Idempotency-Key", required = false)
+                                         String idempotencyKey) {
         Long apiKeyId = (authentication instanceof ApiKeyPrincipal principal) ? principal.getKeyId() : null;
-        return ResponseEntity.ok(eventService.process(request, apiKeyId, idempotencyKey));
+        var result = eventService.processWithMetadata(request, apiKeyId, idempotencyKey);
+        return ResponseEntity.ok()
+            .header(IDEMPOTENCY_REPLAYED_HEADER, Boolean.toString(result.replayed()))
+            .body(result.responseBody());
     }
 }

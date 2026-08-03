@@ -262,4 +262,4 @@ Implemented as the next production-usability slice:
 2. Absence patterns — not implemented; negative conditions and absence timers remain future work.
 3. Watermarks and allowed lateness — partially implemented: event-time windows and future-event exclusion are implemented, but watermark state, grace periods, and late-event correction/retraction are not.
 4. Broker connectors and replay/backfill — not implemented; ingestion currently uses the HTTP event API and idempotency replay is not historical backfill.
-5. Event API response controls — partially implemented: aggregate, sequence, queued, suppressed, and idempotent response data are available, but configurable aggregate omission for external producers and an explicit `X-Idempotency-Replayed` response header are not implemented.
+5. Event API response controls — implemented: new API keys default to compact producer responses, full responses remain available by choice, and successful responses expose an explicit `X-Idempotency-Replayed` header.

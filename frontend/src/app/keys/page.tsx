@@ -10,6 +10,10 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControl,
+  InputLabel,
+  MenuItem,
+  Select,
   Stack,
   Table,
   TableBody,
@@ -25,7 +29,7 @@ import { useState } from "react";
 import { api, errorMessage } from "@/lib/api";
 import { formatTimestamp } from "@/lib/formatters";
 import { usePreferences } from "@/lib/preferences";
-import { ApiKey, ApiKeyRequest } from "@/lib/types";
+import { ApiKey, ApiKeyRequest, ResponseMode } from "@/lib/types";
 
 export default function ApiKeysPage() {
   const { preferences } = usePreferences();
@@ -90,6 +94,7 @@ export default function ApiKeysPage() {
             <TableRow>
               <TableCell>Name</TableCell>
               <TableCell>Prefix</TableCell>
+              <TableCell>Response Mode</TableCell>
               <TableCell>Allowed Event Types</TableCell>
               <TableCell>Allowed Sources</TableCell>
               <TableCell>Status</TableCell>
@@ -103,6 +108,9 @@ export default function ApiKeysPage() {
                 <TableCell>{key.name}</TableCell>
                 <TableCell>
                   <code>{key.prefix}...</code>
+                </TableCell>
+                <TableCell>
+                  {key.responseMode === "FULL" ? "Full details" : "Compact summary"}
                 </TableCell>
                 <TableCell>
                   {key.allowedEventTypes?.join(", ") || "All"}
@@ -127,7 +135,7 @@ export default function ApiKeysPage() {
             ))}
             {!isLoading && keys.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} align="center">
+                <TableCell colSpan={8} align="center">
                   No API keys yet.
                 </TableCell>
               </TableRow>
@@ -160,6 +168,7 @@ function CreateKeyDialog({
   const [name, setName] = useState("");
   const [eventTypes, setEventTypes] = useState("");
   const [sources, setSources] = useState("");
+  const [responseMode, setResponseMode] = useState<ResponseMode>("COMPACT");
 
   const submit = () => {
     onCreate({
@@ -173,10 +182,12 @@ function CreateKeyDialog({
         .map((s) => s.trim())
         .filter(Boolean),
       expiresAt: null,
+      responseMode,
     });
     setName("");
     setEventTypes("");
     setSources("");
+    setResponseMode("COMPACT");
   };
 
   return (
@@ -196,6 +207,21 @@ function CreateKeyDialog({
           onChange={(e) => setSources(e.target.value)}
           fullWidth
         />
+        <FormControl fullWidth>
+          <InputLabel id="response-mode-label">Response mode</InputLabel>
+          <Select
+            labelId="response-mode-label"
+            label="Response mode"
+            value={responseMode}
+            onChange={(event) => setResponseMode(event.target.value as ResponseMode)}
+          >
+            <MenuItem value="COMPACT">Compact summary</MenuItem>
+            <MenuItem value="FULL">Full details</MenuItem>
+          </Select>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+            Compact is recommended for new producers; full details includes the event and rule calculations.
+          </Typography>
+        </FormControl>
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>

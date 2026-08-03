@@ -2,6 +2,8 @@ package com.tengencorp.tengen.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -50,6 +52,10 @@ public class ApiKey {
     @Column(name = "allowed_sources", columnDefinition = "jsonb")
     private List<String> allowedSources;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "response_mode", nullable = false, length = 20)
+    private ResponseMode responseMode = ResponseMode.COMPACT;
+
     @Column(nullable = false)
     private boolean active = true;
 
@@ -64,5 +70,13 @@ public class ApiKey {
         if (createdAt == null) {
             createdAt = Instant.now();
         }
+    }
+
+    /**
+     * Defensive fallback for entities constructed before response modes were
+     * introduced or by tests that do not populate every persisted field.
+     */
+    public ResponseMode getEffectiveResponseMode() {
+        return responseMode != null ? responseMode : ResponseMode.COMPACT;
     }
 }

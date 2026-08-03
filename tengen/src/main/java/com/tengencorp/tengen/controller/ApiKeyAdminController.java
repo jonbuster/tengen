@@ -41,7 +41,8 @@ public class ApiKeyAdminController {
     @PostMapping
     public ResponseEntity<ApiKeyResponse> create(@Valid @RequestBody ApiKeyRequest request) {
         ApiKeyService.CreatedKey created = apiKeyService.create(
-            request.name(), request.allowedEventTypes(), request.allowedSources(), request.expiresAt());
+            request.name(), request.allowedEventTypes(), request.allowedSources(), request.expiresAt(),
+            request.responseMode());
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiKeyResponse.created(created));
     }
 

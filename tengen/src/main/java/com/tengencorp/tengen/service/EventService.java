@@ -3,6 +3,7 @@ package com.tengencorp.tengen.service;
 import com.tengencorp.tengen.repository.ApiKeyRepository;
 import com.tengencorp.tengen.dto.EventRequest;
 import com.tengencorp.tengen.dto.EventResponse;
+import com.tengencorp.tengen.dto.CompactEventResponse;
 import com.tengencorp.tengen.entity.Event;
 import com.tengencorp.tengen.entity.EventRuleActionOutcome;
 import com.tengencorp.tengen.entity.EventRuleOutcome;
@@ -19,6 +20,7 @@ import com.tengencorp.tengen.dto.RuleEvaluation;
 import com.tengencorp.tengen.dto.SequenceResult;
 import com.tengencorp.tengen.entity.EventIdempotency;
 import com.tengencorp.tengen.entity.EventIdempotencyStatus;
+import com.tengencorp.tengen.entity.ResponseMode;
 import com.tengencorp.tengen.exception.IdempotencyConflictException;
 import com.tengencorp.tengen.helper.EventRequestHasher;
 import com.tengencorp.tengen.repository.EventIdempotencyRepository;
@@ -101,6 +103,19 @@ public class EventService {
 
     @Transactional
     public EventResponse process(EventRequest request, Long apiKeyId, String idempotencyKey) {
+        EventIngestionResult result = processWithMetadata(request, apiKeyId, idempotencyKey);
+        return result.fullResponse() != null
+            ? result.fullResponse()
+            : objectMapper.convertValue(result.responseBody(), EventResponse.class);
+    }
+
+    /**
+     * Process an event and return the response body selected by the API key,
+     * together with whether the body came from a completed idempotency replay.
+     */
+    @Transactional
+    public EventIngestionResult processWithMetadata(EventRequest request, Long apiKeyId,
+                                                    String idempotencyKey) {
         if (apiKeyId == null) {
             throw new AccessDeniedException("API key is required");
         }
@@ -124,7 +139,8 @@ public class EventService {
         }
 
         if (normalizedKey == null) {
-            return processEvent(request, apiKey).response();
+            ProcessingResult result = processEvent(request, apiKey);
+            return project(result.response(), apiKey, false);
         }
 
         int inserted = eventIdempotencyRepository.insertIfAbsent(
@@ -144,18 +160,19 @@ public class EventService {
             }
             if (idempotency.getStatus() == EventIdempotencyStatus.COMPLETED) {
                 replayedEvents.increment();
-                return replayResponse(idempotency);
+                return new EventIngestionResult(replayResponse(idempotency), true, null);
             }
             throw new IdempotencyConflictException(
                 "The request for this Idempotency-Key is still being processed; retry later");
         }
 
         ProcessingResult result = processEvent(request, apiKey);
+        EventIngestionResult ingestionResult = project(result.response(), apiKey, false);
         idempotency.setEvent(result.event());
-        idempotency.setResponsePayload(toPayload(result.response()));
+        idempotency.setResponsePayload(toPayload(ingestionResult.responseBody()));
         idempotency.setStatus(EventIdempotencyStatus.COMPLETED);
         idempotency.setCompletedAt(Instant.now());
-        return result.response();
+        return ingestionResult;
     }
 
     private ProcessingResult processEvent(EventRequest request, ApiKey apiKey) {
@@ -264,15 +281,15 @@ public class EventService {
         return normalized;
     }
 
-    private EventResponse replayResponse(EventIdempotency idempotency) {
+    private Map<String, Object> replayResponse(EventIdempotency idempotency) {
         if (idempotency.getResponsePayload() == null) {
             throw new IllegalStateException("Completed idempotency record has no response");
         }
-        return objectMapper.convertValue(idempotency.getResponsePayload(), EventResponse.class);
+        return idempotency.getResponsePayload();
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> toPayload(EventResponse response) {
+    private Map<String, Object> toPayload(Object response) {
         try {
             // Store the idempotent response as JSON-compatible values. In
             // particular, sequence details contain Instant timestamps and the
@@ -281,6 +298,13 @@ public class EventService {
         } catch (Exception exception) {
             throw new IllegalStateException("Could not serialize event response", exception);
         }
+    }
+
+    private EventIngestionResult project(EventResponse response, ApiKey apiKey, boolean replayed) {
+        Object responseBody = apiKey.getEffectiveResponseMode() == ResponseMode.COMPACT
+            ? CompactEventResponse.from(response)
+            : response;
+        return new EventIngestionResult(responseBody, replayed, response);
     }
 
     private record ProcessingResult(Event event, EventResponse response) {

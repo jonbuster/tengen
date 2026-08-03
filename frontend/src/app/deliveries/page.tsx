@@ -24,15 +24,11 @@ import HistoryIcon from "@mui/icons-material/History";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import ReplayIcon from "@mui/icons-material/Replay";
 import Link from "next/link";
-import {
-  DataGrid,
-  GridColDef,
-  GridPaginationModel,
-  GridRowParams,
-} from "@mui/x-data-grid";
+import { type GridColDef, type GridPaginationModel, type GridRowParams } from "@mui/x-data-grid";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { api, errorMessage } from "@/lib/api";
+import { ClientDataGrid } from "@/components/ClientDataGrid";
 import { formatTimestamp } from "@/lib/formatters";
 import { usePreferences } from "@/lib/preferences";
 import {
@@ -263,7 +259,7 @@ export default function DeliveriesPage() {
       )}
 
       <Box sx={{ height: 620, width: "100%" }}>
-        <DataGrid
+        <ClientDataGrid
           rows={rows}
           columns={columns}
           loading={deliveryQuery.isLoading}

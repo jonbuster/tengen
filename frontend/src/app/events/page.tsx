@@ -14,11 +14,12 @@ import {
   Typography,
 } from "@mui/material";
 import EventNoteIcon from "@mui/icons-material/EventNote";
-import { DataGrid, GridColDef, GridPaginationModel, GridRowParams } from "@mui/x-data-grid";
+import { type GridColDef, type GridPaginationModel, type GridRowParams } from "@mui/x-data-grid";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, errorMessage } from "@/lib/api";
+import { ClientDataGrid } from "@/components/ClientDataGrid";
 import { formatTimestamp } from "@/lib/formatters";
 import { usePreferences } from "@/lib/preferences";
 import { EventHistoryPage, EventHistorySummary } from "@/lib/types";
@@ -162,7 +163,7 @@ export default function EventsPage() {
       {eventQuery.error && <Alert severity="error" sx={{ mb: 2 }}>{errorMessage(eventQuery.error)}</Alert>}
 
       <Box sx={{ height: 620, width: "100%" }}>
-        <DataGrid
+        <ClientDataGrid
           rows={rows}
           columns={columns}
           loading={eventQuery.isLoading}

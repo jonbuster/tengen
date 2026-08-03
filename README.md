@@ -210,6 +210,14 @@ API keys are hashed at rest and can be restricted by event type and source. An i
 
 Idempotency keys are scoped to the API key that sent the event.
 
+API keys also control the synchronous event-response detail level. New keys
+default to `COMPACT`, which returns acceptance, match, queued-action, and
+suppression summaries without echoing the event or detailed aggregate/sequence
+results. Existing keys retain `FULL` responses; new keys can choose `FULL`
+explicitly when detailed producer responses are required. Successful event
+responses include `X-Idempotency-Replayed: false` for new processing and `true`
+when a completed idempotent response is replayed.
+
 ## Technical Reference
 
 ### Rule Behavior
@@ -376,7 +384,7 @@ docker compose -f tengen/docker-compose.yml up -d --build frontend
 
 The durable webhook outbox, background delivery worker, automatic retries, dead-letter handling, and delivery-history console are implemented.
 
-See the [CEP roadmap](plans/cep-roadmap-plan.md) for completed work and future capabilities such as sequence and absence patterns, watermarks, broker connectors, and replay or backfill support.
+See the [CEP roadmap](plans/cep-roadmap-plan.md) for completed work and future capabilities such as absence patterns, watermarks, broker connectors, and replay or backfill support.
 
 Detailed webhook implementation plans:
 

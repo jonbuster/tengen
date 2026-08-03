@@ -11,6 +11,7 @@ import com.tengencorp.tengen.repository.EventRepository;
 import com.tengencorp.tengen.entity.RuleType;
 import com.tengencorp.tengen.entity.WebhookOutboxStatus;
 import com.tengencorp.tengen.service.ApiKeyService;
+import com.tengencorp.tengen.entity.ResponseMode;
 import com.tengencorp.tengen.service.WebhookDeliveryAttempt;
 import com.tengencorp.tengen.service.WebhookDeliveryResult;
 import com.tengencorp.tengen.service.WebhookOutboxDeliveryService;
@@ -121,7 +122,9 @@ class EventProcessorIntegrationTest {
         jdbcTemplate.execute("TRUNCATE TABLE rule_action_state, rule_action_windows, "
             + "webhook_outbox, rule_events, rule_revisions, event_idempotency, events, "
             + "rules, api_keys, refresh_sessions RESTART IDENTITY CASCADE");
-        rawApiKey = apiKeyService.create("integration", null, null, null).rawKey();
+        // These legacy processing assertions exercise the full response shape;
+        // producer-facing new keys default to COMPACT in production.
+        rawApiKey = apiKeyService.create("integration", null, null, null, ResponseMode.FULL).rawKey();
     }
 
     private MockHttpServletRequestBuilder eventPost() {

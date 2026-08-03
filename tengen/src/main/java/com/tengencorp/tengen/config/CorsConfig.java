@@ -24,7 +24,7 @@ public class CorsConfig {
                     .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                     .allowedHeaders("Authorization", "Content-Type", "X-API-Key",
                         "Idempotency-Key", "If-Match")
-                    .exposedHeaders("ETag")
+                    .exposedHeaders("ETag", "X-Idempotency-Replayed")
                     .allowCredentials(true)
                     .maxAge(3600);
             }

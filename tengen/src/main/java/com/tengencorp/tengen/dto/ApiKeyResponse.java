@@ -1,5 +1,6 @@
 package com.tengencorp.tengen.dto;
 import com.tengencorp.tengen.entity.ApiKey;
+import com.tengencorp.tengen.entity.ResponseMode;
 import com.tengencorp.tengen.service.ApiKeyService;
 
 import java.time.Instant;
@@ -14,10 +15,19 @@ public record ApiKeyResponse(
         String prefix,
         List<String> allowedEventTypes,
         List<String> allowedSources,
+        ResponseMode responseMode,
         boolean active,
         Instant expiresAt,
         Instant createdAt,
         String rawKey) {
+
+    /** Backward-compatible constructor for callers before response modes existed. */
+    public ApiKeyResponse(Long id, String name, String prefix, List<String> allowedEventTypes,
+                          List<String> allowedSources, boolean active, Instant expiresAt,
+                          Instant createdAt, String rawKey) {
+        this(id, name, prefix, allowedEventTypes, allowedSources, ResponseMode.COMPACT,
+            active, expiresAt, createdAt, rawKey);
+    }
 
     public static ApiKeyResponse from(ApiKey key) {
         return new ApiKeyResponse(
@@ -26,6 +36,7 @@ public record ApiKeyResponse(
             key.getPrefix(),
             key.getAllowedEventTypes(),
             key.getAllowedSources(),
+            key.getEffectiveResponseMode(),
             key.isActive(),
             key.getExpiresAt(),
             key.getCreatedAt(),
@@ -40,6 +51,7 @@ public record ApiKeyResponse(
             key.getPrefix(),
             key.getAllowedEventTypes(),
             key.getAllowedSources(),
+            key.getEffectiveResponseMode(),
             key.isActive(),
             key.getExpiresAt(),
             key.getCreatedAt(),

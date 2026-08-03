@@ -3,6 +3,7 @@ export type RuleAction = "LOG" | "WEBHOOK";
 export type AggregateType = "COUNT" | "SUM" | "AVG" | "MIN" | "MAX";
 export type TriggerMode = "EVERY_MATCH" | "EDGE" | "ONCE_PER_WINDOW";
 export type RuleValidationStatus = "VALID" | "INVALID";
+export type ResponseMode = "FULL" | "COMPACT";
 
 export interface SequenceStep {
   position: number;
@@ -285,6 +286,7 @@ export interface ApiKey {
   prefix: string;
   allowedEventTypes: string[] | null;
   allowedSources: string[] | null;
+  responseMode: ResponseMode;
   active: boolean;
   expiresAt: string | null;
   createdAt: string;
@@ -296,6 +298,7 @@ export interface ApiKeyRequest {
   allowedEventTypes?: string[];
   allowedSources?: string[];
   expiresAt?: string | null;
+  responseMode?: ResponseMode;
 }
 
 export interface ErrorResponse {

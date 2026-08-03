@@ -1,5 +1,6 @@
 package com.tengencorp.tengen.service;
 import com.tengencorp.tengen.entity.ApiKey;
+import com.tengencorp.tengen.entity.ResponseMode;
 import com.tengencorp.tengen.repository.ApiKeyRepository;
 
 import com.tengencorp.tengen.entity.Event;
@@ -36,6 +37,12 @@ public class ApiKeyService {
     @Transactional
     public CreatedKey create(String name, List<String> allowedEventTypes, List<String> allowedSources,
                              Instant expiresAt) {
+        return create(name, allowedEventTypes, allowedSources, expiresAt, null);
+    }
+
+    @Transactional
+    public CreatedKey create(String name, List<String> allowedEventTypes, List<String> allowedSources,
+                             Instant expiresAt, ResponseMode responseMode) {
         String raw = PREFIX + HexFormat.of().formatHex(randomBytes());
         String hash = hash(raw);
         String prefix = raw.substring(0, Math.min(raw.length(), 8));
@@ -46,6 +53,7 @@ public class ApiKeyService {
         key.setPrefix(prefix);
         key.setAllowedEventTypes(allowedEventTypes == null || allowedEventTypes.isEmpty() ? null : allowedEventTypes);
         key.setAllowedSources(allowedSources == null || allowedSources.isEmpty() ? null : allowedSources);
+        key.setResponseMode(responseMode != null ? responseMode : ResponseMode.COMPACT);
         key.setExpiresAt(expiresAt);
         key.setActive(true);
         repository.save(key);

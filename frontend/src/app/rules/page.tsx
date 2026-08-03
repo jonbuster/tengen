@@ -15,11 +15,12 @@ import EditIcon from "@mui/icons-material/Edit";
 import HistoryIcon from "@mui/icons-material/History";
 import RestoreIcon from "@mui/icons-material/Restore";
 import ToggleOnIcon from "@mui/icons-material/ToggleOn";
-import { DataGrid, GridActionsCellItem, GridColDef, GridRowParams } from "@mui/x-data-grid";
+import { GridActionsCellItem, type GridColDef, type GridRowParams } from "@mui/x-data-grid";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, errorMessage } from "@/lib/api";
+import { ClientDataGrid } from "@/components/ClientDataGrid";
 import { Rule } from "@/lib/types";
 import { useMemo, useState } from "react";
 
@@ -194,7 +195,7 @@ export default function RulesPage() {
       )}
 
       <Box sx={{ height: 560 }}>
-        <DataGrid
+        <ClientDataGrid
           rows={rules}
           columns={columns}
           loading={isLoading}
