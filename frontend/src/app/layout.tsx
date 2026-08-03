@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Container, CssBaseline, Paper, ThemeProvider } from "@mui/material";
+import { Box, CssBaseline, Paper, ThemeProvider } from "@mui/material";
 import { usePathname } from "next/navigation";
 import theme from "@/theme";
 import { Providers } from "./providers";
@@ -21,15 +21,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <AuthProvider>
               <Box sx={{ display: "flex", minHeight: "100vh" }}>
                 <NavBar />
-                <Box component="main" sx={{ flexGrow: 1, bgcolor: "background.default" }}>
+                <Box component="main" sx={{ flexGrow: 1, minWidth: 0, bgcolor: "background.default" }}>
                   {isLogin ? (
                     children
                   ) : (
-                    <Container maxWidth="lg" sx={{ py: 4 }}>
-                      <Paper elevation={1} sx={{ borderRadius: 2, overflow: "hidden" }}>
+                    <Box sx={{ width: "100%", px: { xs: 1, sm: 2, md: 3 }, py: { xs: 1, md: 2 } }}>
+                      <Paper elevation={1} sx={{ width: "100%", borderRadius: 2, overflow: "hidden" }}>
                         {children}
                       </Paper>
-                    </Container>
+                    </Box>
                   )}
                 </Box>
               </Box>

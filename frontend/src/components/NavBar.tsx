@@ -15,6 +15,7 @@ import KeyIcon from "@mui/icons-material/Key";
 import RuleIcon from "@mui/icons-material/Rule";
 import ScienceIcon from "@mui/icons-material/Science";
 import HistoryIcon from "@mui/icons-material/History";
+import EventNoteIcon from "@mui/icons-material/EventNote";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { href: "/rules/test", label: "Run Test", icon: <ScienceIcon /> },
   { href: "/keys", label: "API Keys", icon: <KeyIcon /> },
   { href: "/deliveries", label: "Deliveries", icon: <HistoryIcon /> },
+  { href: "/events", label: "Events", icon: <EventNoteIcon /> },
 ];
 
 export function NavBar() {

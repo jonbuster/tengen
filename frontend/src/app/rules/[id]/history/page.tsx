@@ -69,7 +69,7 @@ export default function RuleHistoryPage() {
 
   if (ruleLoading || historyLoading) {
     return (
-      <Container maxWidth="lg" sx={{ py: 8, display: "flex", justifyContent: "center" }}>
+      <Container maxWidth={false} sx={{ py: 8, display: "flex", justifyContent: "center" }}>
         <CircularProgress />
       </Container>
     );
@@ -77,7 +77,7 @@ export default function RuleHistoryPage() {
 
   if (!rule || !history) {
     return (
-      <Container maxWidth="lg" sx={{ py: 4 }}>
+      <Container maxWidth={false} sx={{ py: 4 }}>
         <Alert severity="error">Rule history could not be loaded.</Alert>
       </Container>
     );
@@ -86,7 +86,7 @@ export default function RuleHistoryPage() {
   const selected = history.content.find((item) => item.revision === selectedRevision);
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Container maxWidth={false} sx={{ py: 4 }}>
       <Breadcrumbs sx={{ mb: 2 }}>
         <Typography component={NextLink} href="/rules" color="inherit" sx={{ textDecoration: "none" }}>
           Rules

@@ -4,6 +4,8 @@ import com.tengencorp.tengen.repository.ApiKeyRepository;
 import com.tengencorp.tengen.dto.EventRequest;
 import com.tengencorp.tengen.dto.EventResponse;
 import com.tengencorp.tengen.entity.Event;
+import com.tengencorp.tengen.entity.EventRuleActionOutcome;
+import com.tengencorp.tengen.entity.EventRuleOutcome;
 import com.tengencorp.tengen.entity.ApiKey;
 import com.tengencorp.tengen.repository.EventRepository;
 import com.tengencorp.tengen.entity.Rule;
@@ -20,6 +22,7 @@ import com.tengencorp.tengen.entity.EventIdempotencyStatus;
 import com.tengencorp.tengen.exception.IdempotencyConflictException;
 import com.tengencorp.tengen.helper.EventRequestHasher;
 import com.tengencorp.tengen.repository.EventIdempotencyRepository;
+import com.tengencorp.tengen.repository.EventRuleOutcomeRepository;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,6 +54,7 @@ public class EventService {
     private final WebhookCooldownService webhookCooldownService;
     private final ApiKeyService apiKeyService;
     private final EventIdempotencyRepository eventIdempotencyRepository;
+    private final EventRuleOutcomeRepository eventRuleOutcomeRepository;
     private final EventRequestHasher eventRequestHasher;
     private final ObjectMapper objectMapper;
     private final Counter acceptedEvents;
@@ -66,7 +70,8 @@ public class EventService {
                         EventRequestHasher eventRequestHasher, ObjectMapper objectMapper,
                         MeterRegistry meterRegistry,
                         @Value("${tengen.ingestion.max-future-skew-seconds:300}")
-                        long maxFutureSkewSeconds) {
+                        long maxFutureSkewSeconds,
+                        EventRuleOutcomeRepository eventRuleOutcomeRepository) {
         this.eventRepository = eventRepository;
         this.apiKeyRepository = apiKeyRepository;
         this.ruleRepository = ruleRepository;
@@ -75,6 +80,7 @@ public class EventService {
         this.webhookCooldownService = webhookCooldownService;
         this.apiKeyService = apiKeyService;
         this.eventIdempotencyRepository = eventIdempotencyRepository;
+        this.eventRuleOutcomeRepository = eventRuleOutcomeRepository;
         this.eventRequestHasher = eventRequestHasher;
         this.objectMapper = objectMapper;
         this.acceptedEvents = meterRegistry.counter("tengen.ingestion.events", "result", "accepted");
@@ -165,6 +171,7 @@ public class EventService {
         List<String> suppressedRuleNames = new ArrayList<>();
         Map<String, AggregateResult> aggregates = new LinkedHashMap<>();
         Map<String, SequenceResult> sequences = new LinkedHashMap<>();
+        List<EventRuleOutcome> outcomes = new ArrayList<>();
 
         for (Rule rule : activeRules) {
             RuleEvaluation evaluation = ruleEngine.evaluate(event, rule);
@@ -197,18 +204,34 @@ public class EventService {
                 sequences.put(rule.getName(), evaluation.sequence());
             }
 
+            ActionDecision actionDecision = new ActionDecision(EventRuleActionOutcome.LOG_ONLY, null, null);
             if (rule.getAction() == RuleAction.WEBHOOK && rule.getCallbackUrl() != null) {
-                DeliveryDecision decision = enqueueWebhook(
+                actionDecision = enqueueWebhook(
                     rule, event, request, aggregateResult, evaluation.sequence(), evaluation.groupKey());
-                if (decision == DeliveryDecision.QUEUED) {
+                if (actionDecision.outcome() == EventRuleActionOutcome.WEBHOOK_QUEUED) {
                     queuedRuleNames.add(rule.getName());
-                } else if (decision == DeliveryDecision.SUPPRESSED) {
+                } else if (actionDecision.outcome() == EventRuleActionOutcome.WEBHOOK_SUPPRESSED) {
                     suppressedRuleNames.add(rule.getName());
                 }
             }
+            outcomes.add(new EventRuleOutcome(
+                event,
+                rule.getId(),
+                rule.getEffectiveRevision(),
+                rule.getName(),
+                rule.getRuleType(),
+                evaluation.groupKey(),
+                aggregateResult,
+                evaluation.sequence(),
+                actionDecision.outcome(),
+                actionDecision.suppressionReason(),
+                actionDecision.deliveryId()));
         }
 
         boolean matched = !matchedRuleNames.isEmpty();
+        eventRuleOutcomeRepository.saveAll(outcomes);
+        event.recordProcessingTrace(
+            matchedRuleNames.size(), queuedRuleNames.size(), suppressedRuleNames.size());
         acceptedEvents.increment();
         if (matched) {
             matchedEvents.increment();
@@ -263,10 +286,10 @@ public class EventService {
     private record ProcessingResult(Event event, EventResponse response) {
     }
 
-    private DeliveryDecision enqueueWebhook(Rule rule, Event event, EventRequest request,
-                                             AggregateResult aggregateResult,
-                                             SequenceResult sequenceResult,
-                                             String groupKey) {
+    private ActionDecision enqueueWebhook(Rule rule, Event event, EventRequest request,
+                                          AggregateResult aggregateResult,
+                                          SequenceResult sequenceResult,
+                                          String groupKey) {
         Instant occurredAt = event.getOccurredAt();
         var state = needsActionState(rule) ? webhookCooldownService.lockState(rule, groupKey) : null;
         RuleActionWindow windowState = isOncePerWindowWebhook(rule)
@@ -275,14 +298,20 @@ public class EventService {
 
         if (isEdgeWebhook(rule)) {
             if (webhookCooldownService.isEdgeSuppressed(state)) {
-                return DeliveryDecision.SUPPRESSED;
+                return new ActionDecision(
+                    EventRuleActionOutcome.WEBHOOK_SUPPRESSED,
+                    "EDGE_ALREADY_MATCHED",
+                    null);
             }
         }
 
         if (windowState != null
             && (webhookCooldownService.isWindowDelivered(windowState)
                 || windowState.getPendingOutboxId() != null)) {
-            return DeliveryDecision.SUPPRESSED;
+            return new ActionDecision(
+                EventRuleActionOutcome.WEBHOOK_SUPPRESSED,
+                "WINDOW_ALREADY_RESERVED_OR_DELIVERED",
+                null);
         }
 
         if (rule.getCooldownSeconds() != null && rule.getCooldownSeconds() > 0) {
@@ -290,7 +319,10 @@ public class EventService {
             Instant now = Instant.now();
             if (state.getPendingOutboxId() != null
                 || webhookCooldownService.isSuppressed(state, rule.getCooldownSeconds(), now)) {
-                return DeliveryDecision.SUPPRESSED;
+                return new ActionDecision(
+                    EventRuleActionOutcome.WEBHOOK_SUPPRESSED,
+                    "COOLDOWN_ACTIVE_OR_RESERVED",
+                    null);
             }
         }
 
@@ -318,7 +350,7 @@ public class EventService {
             windowState.setPendingOutboxId(outboxId);
         }
 
-        return DeliveryDecision.QUEUED;
+        return new ActionDecision(EventRuleActionOutcome.WEBHOOK_QUEUED, null, outboxId);
     }
 
     private boolean isEdgeWebhook(Rule rule) {
@@ -370,8 +402,7 @@ public class EventService {
     }
 
 
-    private enum DeliveryDecision {
-        QUEUED,
-        SUPPRESSED
+    private record ActionDecision(EventRuleActionOutcome outcome, String suppressionReason,
+                                  Long deliveryId) {
     }
 }

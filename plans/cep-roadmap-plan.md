@@ -246,6 +246,16 @@ Implemented as the next CEP pattern slice:
 
 The implementation intentionally leaves absence detection, watermarks, reusable events, and branching patterns for later slices.
 
+## Implemented: Event Explorer
+
+Implemented as the next production-usability slice:
+
+- New events persist an immutable matched-rule trace with aggregate/sequence details and webhook action outcomes.
+- Admins can search accepted events by identity, routing fields, API key, match state, trace availability, and received-time range.
+- Event details show the raw payload, matched-rule snapshots, suppression reasons, and related webhook delivery state.
+- Delivery history links back to its source event, and event details link to filtered delivery history.
+- Events written before trace capture remain visible and are explicitly marked as trace unavailable; no historical outcomes are inferred.
+
 ## Later Assessment Roadmap
 
 1. Rule lifecycle/versioning and audit history — implemented with revision-scoped aggregate/trigger state, immutable snapshots, archive/unarchive, restore, and stale-write protection.

@@ -23,6 +23,7 @@ import {
 import HistoryIcon from "@mui/icons-material/History";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import ReplayIcon from "@mui/icons-material/Replay";
+import Link from "next/link";
 import {
   DataGrid,
   GridColDef,
@@ -82,6 +83,12 @@ export default function DeliveriesPage() {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const eventId = new URLSearchParams(window.location.search).get("eventId") ?? "";
+    setFilters((current) => current.eventId === eventId ? current : { ...current, eventId });
+    setPaginationModel((current) => current.page === 0 ? current : { ...current, page: 0 });
+  }, []);
 
   useEffect(() => {
     const stored = window.localStorage.getItem("tengen-delivery-auto-refresh");
@@ -148,7 +155,14 @@ export default function DeliveriesPage() {
         renderCell: (params) => <StatusChip status={params.value as WebhookDeliveryStatus} />,
       },
       { field: "ruleName", headerName: "Rule", minWidth: 190, flex: 1 },
-      { field: "eventId", headerName: "Event", width: 90 },
+      {
+        field: "eventId",
+        headerName: "Event",
+        width: 90,
+        renderCell: (params) => (
+          <Link href={`/events/${params.value as number}`}>{params.value as number}</Link>
+        ),
+      },
       { field: "destination", headerName: "Destination", minWidth: 220, flex: 1 },
       { field: "attemptCount", headerName: "Attempts", width: 95 },
       {
@@ -196,7 +210,7 @@ export default function DeliveriesPage() {
   };
 
   return (
-    <Container maxWidth="xl" sx={{ py: 4 }}>
+    <Container maxWidth={false} sx={{ py: 4 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
         <Stack direction="row" spacing={1} alignItems="center">
           <HistoryIcon color="primary" />
@@ -274,7 +288,8 @@ export default function DeliveriesPage() {
                 <Typography variant="h6">{selectedDelivery.ruleName}</Typography>
               </Stack>
               <Typography variant="body2">
-                Event {selectedDelivery.eventId} · {selectedDelivery.destination} · {selectedDelivery.attemptCount} attempt(s)
+                Event <Link href={`/events/${selectedDelivery.eventId}`}>{selectedDelivery.eventId}</Link>
+                {" · "}{selectedDelivery.destination} · {selectedDelivery.attemptCount} attempt(s)
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Trigger {selectedDelivery.triggerMode} · Scope {selectedDelivery.scopeKey ?? "global"}

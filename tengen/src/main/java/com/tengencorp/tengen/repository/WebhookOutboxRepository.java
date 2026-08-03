@@ -19,6 +19,8 @@ public interface WebhookOutboxRepository extends JpaRepository<WebhookOutbox, Lo
 
     Optional<WebhookOutbox> findByDeduplicationKey(String deduplicationKey);
 
+    List<WebhookOutbox> findByEvent_IdOrderByCreatedAtDescIdDesc(Long eventId);
+
     long countByStatusIn(Collection<WebhookOutboxStatus> statuses);
 
     Optional<WebhookOutbox> findFirstByStatusInOrderByCreatedAtAsc(

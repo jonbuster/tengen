@@ -92,7 +92,7 @@ export default function TestPage() {
   const result = mutation.data;
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Container maxWidth={false} sx={{ py: 4 }}>
       <Typography variant="h5" sx={{ mb: 3 }}>Run Test</Typography>
 
       <Stack spacing={2} sx={{ mb: 3 }}>

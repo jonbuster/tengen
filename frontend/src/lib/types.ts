@@ -233,6 +233,52 @@ export interface WebhookDeliveryDetail {
   leaseExpiresAt: string | null;
 }
 
+export type EventRuleActionOutcome = "LOG_ONLY" | "WEBHOOK_QUEUED" | "WEBHOOK_SUPPRESSED";
+
+export interface EventHistorySummary {
+  id: number;
+  type: string;
+  source: string;
+  occurredAt: string;
+  receivedAt: string;
+  apiKeyId: number | null;
+  apiKeyName: string | null;
+  apiKeyPrefix: string | null;
+  traceAvailable: boolean;
+  matchedRuleCount: number | null;
+  queuedActionCount: number | null;
+  suppressedActionCount: number | null;
+}
+
+export interface EventRuleOutcomeResponse {
+  id: number;
+  ruleId: number;
+  ruleRevision: number;
+  ruleName: string;
+  ruleType: RuleType;
+  groupKey: string | null;
+  aggregate: AggregateResult | null;
+  sequence: SequenceResult | null;
+  actionOutcome: EventRuleActionOutcome;
+  suppressionReason: string | null;
+  deliveryId: number | null;
+}
+
+export interface EventHistoryPage {
+  content: EventHistorySummary[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
+export interface EventHistoryDetail {
+  event: EventHistorySummary;
+  data: Record<string, unknown>;
+  rules: EventRuleOutcomeResponse[];
+  deliveries: WebhookDeliverySummary[];
+}
+
 export interface ApiKey {
   id: number;
   name: string;

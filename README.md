@@ -46,6 +46,7 @@ An accepted event response reports which rules matched, which webhook actions we
 | **Run Test** | Try an event against one or all rules without saving the event or sending webhooks. Sequence rules accept one sample event per step. |
 | **API Keys** | Create scoped ingestion keys, view their status, and revoke them. Raw keys are shown only once. |
 | **Deliveries** | Filter webhook history, inspect attempts and errors, refresh the list, and retry dead-lettered deliveries. |
+| **Events** | Search accepted events, inspect their payloads, review matched-rule outcomes, and follow webhook deliveries. |
 
 Delivery auto-refresh is off by default. It can be enabled when a near-real-time view of active deliveries is useful.
 
@@ -172,6 +173,10 @@ volume.
 - **Operational visibility:** liveness/readiness endpoints, Prometheus queue
   metrics, bounded retention, delivery leases, retry/dead-letter tracking, and
   structured security logging are included.
+- **Event tracing:** the Event Explorer records exact matched-rule, queued, and
+  suppressed-action outcomes for new events and links them to current webhook
+  delivery history. Older events remain available with an explicit trace-unavailable
+  indicator.
 - **Quality gates:** backend Testcontainers integration tests, ESLint, Vitest,
   Playwright smoke tests, and CI checks now cover the main admin and delivery
   workflows.

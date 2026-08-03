@@ -52,6 +52,19 @@ public class Event {
     @JoinColumn(name = "api_key_id")
     private ApiKey apiKey;
 
+    /** Null for events written before Event Explorer was introduced. */
+    @Column(name = "processing_trace_version")
+    private Short processingTraceVersion;
+
+    @Column(name = "matched_rule_count")
+    private Integer matchedRuleCount;
+
+    @Column(name = "queued_action_count")
+    private Integer queuedActionCount;
+
+    @Column(name = "suppressed_action_count")
+    private Integer suppressedActionCount;
+
     @PrePersist
     void onCreate() {
         if (occurredAt == null) {
@@ -72,5 +85,12 @@ public class Event {
     public Event(String type, String source, Instant occurredAt, Map<String, Object> data, ApiKey apiKey) {
         this(type, source, occurredAt, data);
         this.apiKey = apiKey;
+    }
+
+    public void recordProcessingTrace(int matchedRules, int queuedActions, int suppressedActions) {
+        this.processingTraceVersion = (short) 1;
+        this.matchedRuleCount = matchedRules;
+        this.queuedActionCount = queuedActions;
+        this.suppressedActionCount = suppressedActions;
     }
 }

@@ -144,7 +144,7 @@ public class WebhookDeliveryAdminService {
         return value.trim();
     }
 
-    private String safeDestination(String callbackUrl) {
+    static String safeDestination(String callbackUrl) {
         try {
             URI uri = URI.create(callbackUrl);
             if (uri.getScheme() == null || uri.getHost() == null) {
