@@ -8,12 +8,14 @@ import com.tengencorp.tengen.dto.RuleRevisionDetail;
 import com.tengencorp.tengen.dto.RuleRevisionPage;
 import com.tengencorp.tengen.dto.RuleTestRequest;
 import com.tengencorp.tengen.dto.RuleTestResponse;
+import com.tengencorp.tengen.dto.SequenceTestResult;
 import com.tengencorp.tengen.entity.Event;
 import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.helper.EventJsonParser;
 import com.tengencorp.tengen.repository.RuleRepository;
 import com.tengencorp.tengen.service.RuleEngine;
 import com.tengencorp.tengen.service.RuleLifecycleService;
+import com.tengencorp.tengen.service.SequenceRuleService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -44,14 +46,17 @@ public class RuleAdminController {
     private final RuleEngine ruleEngine;
     private final EventJsonParser eventJsonParser;
     private final RuleLifecycleService lifecycleService;
+    private final SequenceRuleService sequenceRuleService;
 
     public RuleAdminController(RuleRepository ruleRepository, RuleEngine ruleEngine,
                                EventJsonParser eventJsonParser,
-                               RuleLifecycleService lifecycleService) {
+                               RuleLifecycleService lifecycleService,
+                               SequenceRuleService sequenceRuleService) {
         this.ruleRepository = ruleRepository;
         this.ruleEngine = ruleEngine;
         this.eventJsonParser = eventJsonParser;
         this.lifecycleService = lifecycleService;
+        this.sequenceRuleService = sequenceRuleService;
     }
 
     @GetMapping
@@ -128,9 +133,8 @@ public class RuleAdminController {
 
     @PostMapping("/test")
     public RuleTestResponse runTest(@Valid @RequestBody RuleTestRequest request) {
-        Event event = eventJsonParser.parse(request.eventJson());
-
         if ("all".equals(request.mode())) {
+            Event event = parseRequiredEvent(request.eventJson());
             List<RuleResult> results = new ArrayList<>();
             boolean anyMatched = false;
             for (Rule rule : ruleRepository.findByActiveTrueAndArchivedAtIsNullOrderByNameAsc()) {
@@ -147,7 +151,8 @@ public class RuleAdminController {
                     evaluation.aggregateValue(),
                     rule.getThreshold(),
                     rule.getWindowSeconds(),
-                    evaluation.groupKey()));
+                    evaluation.groupKey(),
+                    evaluation.sequence()));
             }
             return RuleTestResponse.all(results, anyMatched, event);
         }
@@ -156,6 +161,21 @@ public class RuleAdminController {
             throw new IllegalArgumentException("ruleId is required in single mode");
         }
         Rule rule = lifecycleService.find(request.ruleId());
+        if (rule.getRuleType() == com.tengencorp.tengen.entity.RuleType.SEQUENCE
+                && request.sequenceEventJsons() != null
+                && !request.sequenceEventJsons().isEmpty()) {
+            if (request.sequenceEventJsons().size() != rule.getSequenceSteps().size()) {
+                throw new IllegalArgumentException(
+                    "sequenceEventJsons must contain one event for each configured sequence step");
+            }
+            List<Event> sequenceEvents = request.sequenceEventJsons().stream()
+                .map(eventJsonParser::parse)
+                .toList();
+            SequenceTestResult sequenceTest = sequenceRuleService.testSequence(sequenceEvents, rule);
+            return RuleTestResponse.singleSequence(rule, sequenceTest,
+                sequenceEvents.get(sequenceEvents.size() - 1));
+        }
+        Event event = parseRequiredEvent(request.eventJson());
         RuleEvaluation evaluation = ruleEngine.test(event, rule);
         return RuleTestResponse.single(
             rule,
@@ -170,6 +190,13 @@ public class RuleAdminController {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         return authentication != null && authentication.getName() != null
             ? authentication.getName() : "system";
+    }
+
+    private Event parseRequiredEvent(String eventJson) {
+        if (eventJson == null || eventJson.isBlank()) {
+            throw new IllegalArgumentException("eventJson is required");
+        }
+        return eventJsonParser.parse(eventJson);
     }
 
     private ResponseEntity<RuleResponse> withEtag(RuleResponse response) {

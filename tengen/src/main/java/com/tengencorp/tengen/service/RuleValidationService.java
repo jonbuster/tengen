@@ -7,6 +7,7 @@ import com.tengencorp.tengen.entity.RuleAction;
 import com.tengencorp.tengen.entity.RuleType;
 import com.tengencorp.tengen.entity.TriggerMode;
 import com.tengencorp.tengen.entity.RuleValidationStatus;
+import com.tengencorp.tengen.entity.RuleSequenceStep;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -52,17 +53,12 @@ public class RuleValidationService {
         require(rule.getName() != null && !rule.getName().isBlank(), "Name is required");
         require(rule.getRuleType() != null, "Rule type is required");
         require(rule.getAction() != null, "Action is required");
-        require(rule.getEventType() != null && !rule.getEventType().isBlank(), "Event type is required");
-        require(rule.getSource() != null && !rule.getSource().isBlank(), "Source is required");
-
-        String expression = rule.getConditionScript();
-        require(expression != null && !expression.isBlank(), "Condition is required");
-        require(expression.length() <= maxExpressionLength,
-            "Condition must be at most " + maxExpressionLength + " characters");
-        try {
-            aviator.validate(expression);
-        } catch (RuntimeException exception) {
-            throw new IllegalArgumentException("Condition is not valid Aviator: " + safeMessage(exception));
+        if (rule.getRuleType() == RuleType.SEQUENCE) {
+            validateSequence(rule);
+        } else {
+            require(rule.getEventType() != null && !rule.getEventType().isBlank(), "Event type is required");
+            require(rule.getSource() != null && !rule.getSource().isBlank(), "Source is required");
+            validateExpression(rule.getConditionScript(), "Condition");
         }
 
         Double threshold = rule.getThreshold();
@@ -86,6 +82,39 @@ public class RuleValidationService {
                 require(rule.getRuleType() == RuleType.AGGREGATE,
                     "ONCE_PER_WINDOW requires an aggregate rule");
             }
+        }
+    }
+
+    private void validateSequence(Rule rule) {
+        require(rule.getWindowSeconds() != null && rule.getWindowSeconds() > 0,
+            "Sequence windowSeconds must be positive");
+        require(rule.getSequenceSteps() != null
+                && rule.getSequenceSteps().size() >= 2
+                && rule.getSequenceSteps().size() <= 5,
+            "Sequence must contain between 2 and 5 steps");
+
+        int expectedPosition = 1;
+        for (RuleSequenceStep step : rule.getSequenceSteps()) {
+            require(step != null && step.getPosition() != null
+                    && step.getPosition() == expectedPosition,
+                "Sequence steps must be numbered consecutively from 1");
+            require(step.getEventType() != null && !step.getEventType().isBlank(),
+                "Sequence step event type is required");
+            require(step.getSource() != null && !step.getSource().isBlank(),
+                "Sequence step source is required");
+            validateExpression(step.getConditionScript(), "Sequence step condition");
+            expectedPosition++;
+        }
+    }
+
+    private void validateExpression(String expression, String label) {
+        require(expression != null && !expression.isBlank(), label + " is required");
+        require(expression.length() <= maxExpressionLength,
+            label + " must be at most " + maxExpressionLength + " characters");
+        try {
+            aviator.validate(expression);
+        } catch (RuntimeException exception) {
+            throw new IllegalArgumentException(label + " is not valid Aviator: " + safeMessage(exception));
         }
     }
 

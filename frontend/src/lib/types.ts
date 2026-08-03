@@ -1,8 +1,15 @@
-export type RuleType = "CONDITION" | "AGGREGATE";
+export type RuleType = "CONDITION" | "AGGREGATE" | "SEQUENCE";
 export type RuleAction = "LOG" | "WEBHOOK";
 export type AggregateType = "COUNT" | "SUM" | "AVG" | "MIN" | "MAX";
 export type TriggerMode = "EVERY_MATCH" | "EDGE" | "ONCE_PER_WINDOW";
 export type RuleValidationStatus = "VALID" | "INVALID";
+
+export interface SequenceStep {
+  position: number;
+  eventType: string;
+  source: string;
+  conditionScript: string;
+}
 
 export interface Rule {
   id: number;
@@ -12,9 +19,9 @@ export interface Rule {
   callbackUrl: string | null;
   cooldownSeconds: number | null;
   triggerMode: TriggerMode;
-  eventType: string;
-  source: string;
-  conditionScript: string;
+  eventType: string | null;
+  source: string | null;
+  conditionScript: string | null;
   windowSeconds: number | null;
   aggType: AggregateType | null;
   aggField: string | null;
@@ -27,6 +34,7 @@ export interface Rule {
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  sequenceSteps: SequenceStep[];
 }
 
 export type RuleRevisionChangeType =
@@ -55,9 +63,9 @@ export interface RuleSnapshot {
   callbackUrl: string | null;
   cooldownSeconds: number | null;
   triggerMode: TriggerMode;
-  eventType: string;
-  source: string;
-  conditionScript: string;
+  eventType: string | null;
+  source: string | null;
+  conditionScript: string | null;
   windowSeconds: number | null;
   aggType: AggregateType | null;
   aggField: string | null;
@@ -65,6 +73,7 @@ export interface RuleSnapshot {
   threshold: number;
   active: boolean;
   archivedAt: string | null;
+  sequenceSteps: SequenceStep[];
 }
 
 export interface RuleRevisionPage {
@@ -88,8 +97,8 @@ export interface RuleRequest {
   callbackUrl?: string | null;
   cooldownSeconds?: number | null;
   triggerMode?: TriggerMode | null;
-  eventType: string;
-  source: string;
+  eventType?: string | null;
+  source?: string | null;
   conditionScript: string;
   windowSeconds?: number | null;
   aggType?: AggregateType | null;
@@ -97,12 +106,14 @@ export interface RuleRequest {
   groupBy?: string | null;
   threshold?: number;
   active: boolean;
+  sequenceSteps?: SequenceStep[];
 }
 
 export interface RuleTestRequest {
   mode: "single" | "all";
   ruleId?: number;
   eventJson: string;
+  sequenceEventJsons?: string[];
 }
 
 export interface RuleResult {
@@ -116,6 +127,7 @@ export interface RuleResult {
   threshold: number | null;
   windowSeconds: number | null;
   groupKey: string | null;
+  sequence: SequenceResult | null;
 }
 
 export interface TestResult {
@@ -127,6 +139,7 @@ export interface TestResult {
   event: unknown;
   results: RuleResult[] | null;
   anyMatched: boolean | null;
+  sequenceTest: SequenceTestResult | null;
 }
 
 export interface AggregateResult {
@@ -137,6 +150,34 @@ export interface AggregateResult {
   groupKey: string | null;
 }
 
+export interface SequenceStepMatch {
+  position: number;
+  eventId: number | null;
+  occurredAt: string;
+}
+
+export interface SequenceResult {
+  groupKey: string | null;
+  windowSeconds: number;
+  steps: SequenceStepMatch[];
+}
+
+export interface SequenceStepTestResult {
+  position: number;
+  conditionMatched: boolean;
+  occurredAt: string;
+}
+
+export interface SequenceTestResult {
+  matched: boolean;
+  correlationMatched: boolean;
+  orderingValid: boolean;
+  withinWindow: boolean;
+  groupKey: string | null;
+  steps: SequenceStepTestResult[];
+  sequence: SequenceResult | null;
+}
+
 export interface EventResponse {
   event: unknown;
   status: string;
@@ -144,6 +185,7 @@ export interface EventResponse {
   rules: string[];
   queuedRules: string[];
   aggregates: Record<string, AggregateResult>;
+  sequences: Record<string, SequenceResult>;
   suppressedRules: string[];
 }
 

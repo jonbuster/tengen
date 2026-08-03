@@ -27,6 +27,7 @@ const rule: Rule = {
   archivedAt: null,
   createdAt: "2026-08-03T00:00:00Z",
   updatedAt: "2026-08-03T00:00:00Z",
+  sequenceSteps: [],
 };
 
 describe("RuleForm", () => {
@@ -37,12 +38,38 @@ describe("RuleForm", () => {
     const rawButton = screen.getByRole("button", { name: "Raw Aviator" });
     await user.click(rawButton);
     expect(rawButton).toHaveAttribute("aria-pressed", "true");
-    const raw = screen.getByRole("textbox", { name: /Condition Script \(Aviator\)/i });
+    const raw = screen.getByRole("textbox", { name: /Condition \(Aviator\)/i });
     expect(raw).toHaveValue("(data.amount >= 1000)");
 
     fireEvent.change(raw, { target: { value: "data.amount + 1 > 10" } });
     await user.click(screen.getByRole("button", { name: "Visual Builder" }));
     expect(screen.getByText(/cannot represent/i)).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: /Condition Script \(Aviator\)/i })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /Condition \(Aviator\)/i })).toBeInTheDocument();
+  });
+
+  it("supports adding and reordering sequence steps", async () => {
+    const user = userEvent.setup();
+    const sequenceRule: Rule = {
+      ...rule,
+      ruleType: "SEQUENCE",
+      eventType: null,
+      source: null,
+      conditionScript: null,
+      windowSeconds: 300,
+      groupBy: "data.userId",
+      sequenceSteps: [
+        { position: 1, eventType: "opened", source: "workflow", conditionScript: "(true == true)" },
+        { position: 2, eventType: "approved", source: "workflow", conditionScript: "(true == true)" },
+      ],
+    };
+    render(<RuleForm initial={sequenceRule} onSubmit={vi.fn()} />);
+
+    expect(screen.getByText("Step 1")).toBeInTheDocument();
+    expect(screen.getByText("Step 2")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add step" }));
+    expect(screen.getByText("Step 3")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Move step 3 up" }));
+    expect(screen.getByRole("button", { name: "Move step 2 up" })).toBeInTheDocument();
   });
 });

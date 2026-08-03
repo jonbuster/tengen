@@ -9,12 +9,14 @@ import com.tengencorp.tengen.dto.RuleSnapshot;
 import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.entity.RuleRevision;
 import com.tengencorp.tengen.entity.RuleRevisionChangeType;
+import com.tengencorp.tengen.entity.RuleSequenceInstanceStatus;
 import com.tengencorp.tengen.exception.ConflictException;
 import com.tengencorp.tengen.exception.NotFoundException;
 import com.tengencorp.tengen.repository.RuleActionStateRepository;
 import com.tengencorp.tengen.repository.RuleActionWindowRepository;
 import com.tengencorp.tengen.repository.RuleRepository;
 import com.tengencorp.tengen.repository.RuleRevisionRepository;
+import com.tengencorp.tengen.repository.RuleSequenceInstanceRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -36,6 +38,7 @@ public class RuleLifecycleService {
     private final RuleRevisionRepository revisionRepository;
     private final RuleActionStateRepository actionStateRepository;
     private final RuleActionWindowRepository actionWindowRepository;
+    private final RuleSequenceInstanceRepository sequenceInstanceRepository;
     private final ObjectMapper objectMapper;
     private final RuleValidationService validationService;
 
@@ -43,12 +46,14 @@ public class RuleLifecycleService {
                                 RuleRevisionRepository revisionRepository,
                                 RuleActionStateRepository actionStateRepository,
                                 RuleActionWindowRepository actionWindowRepository,
+                                RuleSequenceInstanceRepository sequenceInstanceRepository,
                                 ObjectMapper objectMapper,
                                 RuleValidationService validationService) {
         this.ruleRepository = ruleRepository;
         this.revisionRepository = revisionRepository;
         this.actionStateRepository = actionStateRepository;
         this.actionWindowRepository = actionWindowRepository;
+        this.sequenceInstanceRepository = sequenceInstanceRepository;
         this.objectMapper = objectMapper;
         this.validationService = validationService;
     }
@@ -87,6 +92,10 @@ public class RuleLifecycleService {
             return RuleResponse.from(rule);
         }
 
+        // Flush orphan removal before adding replacement steps. Hibernate can otherwise
+        // schedule the new rows before deleting the old rows, violating the unique
+        // (rule_id, position) constraint when positions are reused during an edit.
+        clearSequenceSteps(rule);
         request.applyTo(rule);
         validationService.validateAndMark(rule);
         rule.setArchivedAt(proposed.getArchivedAt());
@@ -166,6 +175,9 @@ public class RuleLifecycleService {
             throw new ConflictException("Cannot restore because the snapshot name is already in use");
         }
 
+        // Restoring a sequence revision replaces positions as well, so remove the
+        // managed children in a separate flush before applying the snapshot.
+        clearSequenceSteps(rule);
         applySnapshot(rule, snapshot);
         validationService.validateAndMark(rule);
         rule.setActive(false);
@@ -228,6 +240,18 @@ public class RuleLifecycleService {
     private void resetRuntimeState(Rule rule) {
         actionStateRepository.deleteByRuleId(rule.getId());
         actionWindowRepository.deleteByRuleId(rule.getId());
+        sequenceInstanceRepository.cancelActiveByRuleId(
+            rule.getId(),
+            RuleSequenceInstanceStatus.ACTIVE,
+            RuleSequenceInstanceStatus.CANCELLED,
+            Instant.now());
+    }
+
+    private void clearSequenceSteps(Rule rule) {
+        if (!rule.getSequenceSteps().isEmpty()) {
+            rule.getSequenceSteps().clear();
+            ruleRepository.flush();
+        }
     }
 
     private boolean sameSnapshot(Rule current, Rule proposed) {
@@ -283,9 +307,7 @@ public class RuleLifecycleService {
     }
 
     private void applySnapshot(Rule rule, RuleSnapshot snapshot) {
-        if (snapshot.name() == null || snapshot.ruleType() == null || snapshot.action() == null
-            || snapshot.eventType() == null || snapshot.source() == null
-            || snapshot.conditionScript() == null) {
+        if (snapshot.name() == null || snapshot.ruleType() == null || snapshot.action() == null) {
             throw new IllegalArgumentException("Rule revision snapshot is incomplete");
         }
         rule.setName(snapshot.name());
@@ -294,14 +316,24 @@ public class RuleLifecycleService {
         rule.setCallbackUrl(snapshot.callbackUrl());
         rule.setCooldownSeconds(snapshot.cooldownSeconds());
         rule.setTriggerMode(snapshot.triggerMode());
-        rule.setEventType(snapshot.eventType());
-        rule.setSource(snapshot.source());
-        rule.setConditionScript(snapshot.conditionScript());
+        rule.setEventType(snapshot.ruleType() == com.tengencorp.tengen.entity.RuleType.SEQUENCE
+            ? null : snapshot.eventType());
+        rule.setSource(snapshot.ruleType() == com.tengencorp.tengen.entity.RuleType.SEQUENCE
+            ? null : snapshot.source());
+        rule.setConditionScript(snapshot.ruleType() == com.tengencorp.tengen.entity.RuleType.SEQUENCE
+            ? null : snapshot.conditionScript());
         rule.setWindowSeconds(snapshot.windowSeconds());
         rule.setAggType(snapshot.aggType());
         rule.setAggField(snapshot.aggField());
         rule.setGroupBy(snapshot.groupBy());
         rule.setThreshold(snapshot.threshold() != null ? snapshot.threshold() : 0.0);
+        rule.getSequenceSteps().clear();
+        if (snapshot.sequenceSteps() != null) {
+            for (com.tengencorp.tengen.dto.SequenceStep step : snapshot.sequenceSteps()) {
+                rule.getSequenceSteps().add(new com.tengencorp.tengen.entity.RuleSequenceStep(
+                    rule, step.position(), step.eventType(), step.source(), step.conditionScript()));
+            }
+        }
     }
 
     private void validatePage(int page, int size) {

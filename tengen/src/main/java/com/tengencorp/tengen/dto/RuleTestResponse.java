@@ -19,16 +19,24 @@ public record RuleTestResponse(
         Double aggregateValue,
         String groupKey,
         Event event,
+        SequenceTestResult sequenceTest,
         List<RuleResult> results,
         Boolean anyMatched) {
 
     public static RuleTestResponse single(Rule rule, boolean matched, boolean conditionMatched,
                                           Double aggregateValue, String groupKey, Event event) {
         return new RuleTestResponse(RuleResponse.from(rule), matched, conditionMatched,
-            aggregateValue, groupKey, event, null, null);
+            aggregateValue, groupKey, event, null, null, null);
+    }
+
+    public static RuleTestResponse singleSequence(Rule rule, SequenceTestResult sequenceTest,
+                                                  Event event) {
+        return new RuleTestResponse(RuleResponse.from(rule), sequenceTest.matched(),
+            sequenceTest.steps().stream().anyMatch(SequenceStepTestResult::conditionMatched),
+            null, sequenceTest.groupKey(), event, sequenceTest, null, null);
     }
 
     public static RuleTestResponse all(List<RuleResult> results, boolean anyMatched, Event event) {
-        return new RuleTestResponse(null, null, null, null, null, event, results, anyMatched);
+        return new RuleTestResponse(null, null, null, null, null, event, null, results, anyMatched);
     }
 }

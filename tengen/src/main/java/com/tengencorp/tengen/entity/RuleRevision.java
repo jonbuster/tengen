@@ -32,6 +32,8 @@ import java.util.Map;
 @NoArgsConstructor
 public class RuleRevision {
 
+    public static final int CURRENT_SNAPSHOT_SCHEMA_VERSION = 2;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -71,6 +73,7 @@ public class RuleRevision {
         this.actor = actor;
         this.snapshot = snapshot;
         this.restoredFromRevision = restoredFromRevision;
+        this.snapshotSchemaVersion = CURRENT_SNAPSHOT_SCHEMA_VERSION;
     }
 
     @PrePersist

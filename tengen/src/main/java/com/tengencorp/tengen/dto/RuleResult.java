@@ -16,5 +16,6 @@ public record RuleResult(
         Double aggregateValue,
         Double threshold,
         Integer windowSeconds,
-        String groupKey) {
+        String groupKey,
+        SequenceResult sequence) {
 }

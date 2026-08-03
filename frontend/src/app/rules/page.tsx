@@ -65,7 +65,23 @@ export default function RulesPage() {
     { field: "id", headerName: "ID", width: 70 },
     { field: "name", headerName: "Name", flex: 1, minWidth: 180 },
     { field: "revision", headerName: "Revision", width: 95 },
-    { field: "ruleType", headerName: "Type", width: 120 },
+    {
+      field: "ruleType",
+      headerName: "Type",
+      width: 150,
+      renderCell: (params) => params.row.ruleType === "SEQUENCE"
+        ? `SEQUENCE (${params.row.sequenceSteps?.length ?? 0})`
+        : params.value,
+    },
+    {
+      field: "sequenceSummary",
+      headerName: "Pattern",
+      flex: 1,
+      minWidth: 180,
+      valueGetter: (_value, row: Rule) => row.ruleType === "SEQUENCE"
+        ? (row.sequenceSteps ?? []).map((step) => step.eventType).join(" → ")
+        : `${row.eventType ?? ""} / ${row.source ?? ""}`,
+    },
     { field: "action", headerName: "Action", width: 110 },
     {
       field: "active",

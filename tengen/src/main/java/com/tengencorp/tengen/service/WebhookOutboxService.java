@@ -2,6 +2,7 @@ package com.tengencorp.tengen.service;
 
 import com.tengencorp.tengen.dto.AggregateResult;
 import com.tengencorp.tengen.dto.EventRequest;
+import com.tengencorp.tengen.dto.SequenceResult;
 import com.tengencorp.tengen.entity.Event;
 import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.entity.TriggerMode;
@@ -36,7 +37,8 @@ public class WebhookOutboxService {
      * caller while holding the relevant action-state lock.
      */
     public EnqueueResult enqueue(Rule rule, Event event, EventRequest request,
-                                 AggregateResult aggregateResult, String groupKey,
+                                 AggregateResult aggregateResult, SequenceResult sequenceResult,
+                                 String groupKey,
                                  Instant windowStart) {
         String scopeKey = groupKey != null ? groupKey : GLOBAL_SCOPE;
         TriggerMode triggerMode = rule.getEffectiveTriggerMode();
@@ -48,7 +50,7 @@ public class WebhookOutboxService {
         }
 
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("event", objectMapper.convertValue(request, Map.class));
+        payload.put("event", jsonMap(request));
         payload.put("status", "accepted");
         payload.put("matched", true);
         payload.put("rules", List.of(rule.getName()));
@@ -57,6 +59,13 @@ public class WebhookOutboxService {
             aggregates.put(rule.getName(), aggregateResult);
         }
         payload.put("aggregates", aggregates);
+        Map<String, Object> sequences = new LinkedHashMap<>();
+        if (sequenceResult != null) {
+            // Persist a JSON-compatible map. Hibernate's JSON mapper does not
+            // register a Java-time module, while sequence details contain Instants.
+            sequences.put(rule.getName(), jsonMap(sequenceResult));
+        }
+        payload.put("sequences", sequences);
 
         WebhookOutbox outbox = new WebhookOutbox(
             event,
@@ -71,6 +80,15 @@ public class WebhookOutboxService {
             rule.getCooldownSeconds(),
             deduplicationKey);
         return new EnqueueResult(outboxRepository.save(outbox), true);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> jsonMap(Object value) {
+        try {
+            return objectMapper.readValue(objectMapper.writeValueAsString(value), Map.class);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Could not serialize webhook payload", exception);
+        }
     }
 
     private String deduplicationKey(Rule rule, Event event, String scopeKey,

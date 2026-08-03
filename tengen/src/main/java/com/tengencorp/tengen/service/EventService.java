@@ -14,6 +14,7 @@ import com.tengencorp.tengen.entity.RuleType;
 import com.tengencorp.tengen.entity.TriggerMode;
 import com.tengencorp.tengen.dto.AggregateResult;
 import com.tengencorp.tengen.dto.RuleEvaluation;
+import com.tengencorp.tengen.dto.SequenceResult;
 import com.tengencorp.tengen.entity.EventIdempotency;
 import com.tengencorp.tengen.entity.EventIdempotencyStatus;
 import com.tengencorp.tengen.exception.IdempotencyConflictException;
@@ -157,13 +158,13 @@ public class EventService {
             apiKey);
         event = eventRepository.save(event);
 
-        List<Rule> activeRules = ruleRepository
-            .findByActiveTrueAndArchivedAtIsNullAndEventTypeAndSourceOrderByNameAsc(
-                event.getType(), event.getSource());
+        List<Rule> activeRules = ruleRepository.findActiveRulesForEvent(
+            event.getType(), event.getSource(), RuleType.SEQUENCE);
         List<String> matchedRuleNames = new ArrayList<>();
         List<String> queuedRuleNames = new ArrayList<>();
         List<String> suppressedRuleNames = new ArrayList<>();
         Map<String, AggregateResult> aggregates = new LinkedHashMap<>();
+        Map<String, SequenceResult> sequences = new LinkedHashMap<>();
 
         for (Rule rule : activeRules) {
             RuleEvaluation evaluation = ruleEngine.evaluate(event, rule);
@@ -192,10 +193,13 @@ public class EventService {
                 );
                 aggregates.put(rule.getName(), aggregateResult);
             }
+            if (rule.getRuleType() == RuleType.SEQUENCE && evaluation.sequence() != null) {
+                sequences.put(rule.getName(), evaluation.sequence());
+            }
 
             if (rule.getAction() == RuleAction.WEBHOOK && rule.getCallbackUrl() != null) {
                 DeliveryDecision decision = enqueueWebhook(
-                    rule, event, request, aggregateResult, evaluation.groupKey());
+                    rule, event, request, aggregateResult, evaluation.sequence(), evaluation.groupKey());
                 if (decision == DeliveryDecision.QUEUED) {
                     queuedRuleNames.add(rule.getName());
                 } else if (decision == DeliveryDecision.SUPPRESSED) {
@@ -218,6 +222,7 @@ public class EventService {
                 matchedRuleNames,
                 queuedRuleNames,
                 aggregates,
+                sequences,
                 suppressedRuleNames));
     }
 
@@ -245,14 +250,23 @@ public class EventService {
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> toPayload(EventResponse response) {
-        return objectMapper.convertValue(response, Map.class);
+        try {
+            // Store the idempotent response as JSON-compatible values. In
+            // particular, sequence details contain Instant timestamps and the
+            // Hibernate JSON mapper does not provide a Java-time module.
+            return objectMapper.readValue(objectMapper.writeValueAsString(response), Map.class);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Could not serialize event response", exception);
+        }
     }
 
     private record ProcessingResult(Event event, EventResponse response) {
     }
 
     private DeliveryDecision enqueueWebhook(Rule rule, Event event, EventRequest request,
-                                             AggregateResult aggregateResult, String groupKey) {
+                                             AggregateResult aggregateResult,
+                                             SequenceResult sequenceResult,
+                                             String groupKey) {
         Instant occurredAt = event.getOccurredAt();
         var state = needsActionState(rule) ? webhookCooldownService.lockState(rule, groupKey) : null;
         RuleActionWindow windowState = isOncePerWindowWebhook(rule)
@@ -285,6 +299,7 @@ public class EventService {
             event,
             request,
             aggregateResult,
+            sequenceResult,
             groupKey,
             windowState != null ? windowState.getWindowStart() : null);
         Long outboxId = enqueueResult.outbox().getId();
@@ -333,13 +348,20 @@ public class EventService {
     }
 
     private boolean hasTriggerScope(Event event, Rule rule, RuleEvaluation evaluation) {
-        if (!rule.getEventType().equals(event.getType()) || !rule.getSource().equals(event.getSource())) {
-            return false;
+        if (rule.getRuleType() == RuleType.SEQUENCE) {
+            boolean routed = rule.getSequenceSteps().stream()
+                .anyMatch(step -> step.getEventType().equals(event.getType())
+                    && step.getSource().equals(event.getSource()));
+            return routed && (!usesGrouping(rule) || evaluation.groupKey() != null);
         }
         return rule.getRuleType() != RuleType.AGGREGATE
             || rule.getGroupBy() == null
             || rule.getGroupBy().isBlank()
             || evaluation.groupKey() != null;
+    }
+
+    private boolean usesGrouping(Rule rule) {
+        return rule.getGroupBy() != null && !rule.getGroupBy().isBlank();
     }
 
     private void resetEdgeState(Rule rule, String groupKey) {

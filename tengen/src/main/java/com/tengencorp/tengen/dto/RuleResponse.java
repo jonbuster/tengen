@@ -8,6 +8,7 @@ import com.tengencorp.tengen.entity.TriggerMode;
 import com.tengencorp.tengen.entity.RuleValidationStatus;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Serialized representation of a {@link Rule} returned by the admin API.
@@ -34,7 +35,8 @@ public record RuleResponse(
         int revision,
         Instant archivedAt,
         Instant createdAt,
-        Instant updatedAt) {
+        Instant updatedAt,
+        List<SequenceStep> sequenceSteps) {
 
     public static RuleResponse from(Rule rule) {
         return new RuleResponse(
@@ -59,6 +61,7 @@ public record RuleResponse(
             rule.getEffectiveRevision(),
             rule.getArchivedAt(),
             rule.getCreatedAt(),
-            rule.getUpdatedAt());
+            rule.getUpdatedAt(),
+            rule.getSequenceSteps().stream().map(SequenceStep::from).toList());
     }
 }

@@ -70,6 +70,23 @@ public class RetentionService {
                 SELECT id FROM rule_events WHERE occurred_at < ? LIMIT ?
             )
             """, cutoff));
+        deleted.put("rule_sequence_instance_events", drain("""
+            DELETE FROM rule_sequence_instance_events WHERE id IN (
+                SELECT instance_event.id
+                FROM rule_sequence_instance_events instance_event
+                JOIN rule_sequence_instances instance ON instance.id = instance_event.instance_id
+                WHERE instance.status IN ('COMPLETED', 'CANCELLED')
+                  AND instance.updated_at < ?
+                LIMIT ?
+            )
+            """, cutoff));
+        deleted.put("rule_sequence_instances", drain("""
+            DELETE FROM rule_sequence_instances WHERE id IN (
+                SELECT id FROM rule_sequence_instances
+                WHERE status IN ('COMPLETED', 'CANCELLED')
+                  AND updated_at < ? LIMIT ?
+            )
+            """, cutoff));
         deleted.put("rule_action_windows", drain("""
             DELETE FROM rule_action_windows WHERE id IN (
                 SELECT id FROM rule_action_windows
@@ -81,6 +98,10 @@ public class RetentionService {
                 SELECT event.id FROM events event
                 WHERE event.received_at < ?
                   AND NOT EXISTS (SELECT 1 FROM rule_events re WHERE re.event_id = event.id)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM rule_sequence_instance_events sequence_event
+                      WHERE sequence_event.event_id = event.id
+                  )
                   AND NOT EXISTS (SELECT 1 FROM webhook_outbox outbox WHERE outbox.event_id = event.id)
                   AND NOT EXISTS (SELECT 1 FROM event_idempotency idem WHERE idem.event_id = event.id)
                 LIMIT ?

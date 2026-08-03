@@ -7,6 +7,7 @@ import com.tengencorp.tengen.entity.RuleType;
 import com.tengencorp.tengen.entity.TriggerMode;
 
 import java.time.Instant;
+import java.util.List;
 
 /** Stable, configuration-only representation stored in a rule revision. */
 public record RuleSnapshot(
@@ -25,7 +26,8 @@ public record RuleSnapshot(
         String groupBy,
         Double threshold,
         boolean active,
-        Instant archivedAt) {
+        Instant archivedAt,
+        List<SequenceStep> sequenceSteps) {
 
     public static RuleSnapshot from(Rule rule) {
         return new RuleSnapshot(
@@ -44,6 +46,7 @@ public record RuleSnapshot(
             rule.getGroupBy(),
             rule.getThreshold(),
             rule.isActive(),
-            rule.getArchivedAt());
+            rule.getArchivedAt(),
+            rule.getSequenceSteps().stream().map(SequenceStep::from).toList());
     }
 }

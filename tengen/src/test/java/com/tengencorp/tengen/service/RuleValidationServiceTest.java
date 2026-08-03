@@ -5,10 +5,12 @@ import com.tengencorp.tengen.entity.AggregateType;
 import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.entity.RuleAction;
 import com.tengencorp.tengen.entity.RuleType;
+import com.tengencorp.tengen.entity.RuleSequenceStep;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class RuleValidationServiceTest {
 
@@ -60,6 +62,24 @@ class RuleValidationServiceTest {
 
         assertThatThrownBy(() -> validationService.validate(rule))
             .hasMessageContaining("not valid Aviator");
+    }
+
+    @Test
+    void sequenceRequiresBetweenTwoAndFiveConsecutiveSteps() {
+        Rule rule = baseRule();
+        rule.setRuleType(RuleType.SEQUENCE);
+        rule.setEventType(null);
+        rule.setSource(null);
+        rule.setConditionScript(null);
+        rule.setWindowSeconds(300);
+        rule.getSequenceSteps().add(new RuleSequenceStep(rule, 1, "a", "source", "true"));
+
+        assertThatThrownBy(() -> validationService.validate(rule))
+            .hasMessageContaining("between 2 and 5");
+
+        rule.getSequenceSteps().add(new RuleSequenceStep(rule, 2, "b", "source", "true"));
+        validationService.validate(rule);
+        assertThat(rule.getSequenceSteps()).hasSize(2);
     }
 
     private Rule baseRule() {

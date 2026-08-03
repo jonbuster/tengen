@@ -10,6 +10,9 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.Valid;
+
+import java.util.List;
 
 /**
  * Request DTO for create/update rule operations. Mirrors the previous
@@ -35,15 +38,12 @@ public record RuleRequest(
 
         TriggerMode triggerMode,
 
-        @NotBlank(message = "Event type is required")
         @Size(max = 100, message = "Event type must be at most 100 characters")
         String eventType,
 
-        @NotBlank(message = "Source is required")
         @Size(max = 100, message = "Source must be at most 100 characters")
         String source,
 
-        @NotBlank(message = "Condition is required")
         String conditionScript,
 
         Integer windowSeconds,
@@ -58,7 +58,9 @@ public record RuleRequest(
 
         Double threshold,
 
-        boolean active) {
+        boolean active,
+
+        List<@Valid SequenceStep> sequenceSteps) {
 
     public Rule toEntity() {
         Rule rule = new Rule();
@@ -74,15 +76,28 @@ public record RuleRequest(
         rule.setCooldownSeconds(action == RuleAction.WEBHOOK ? cooldownSeconds : null);
         rule.setTriggerMode(action == RuleAction.WEBHOOK && triggerMode != null
             ? triggerMode : TriggerMode.EVERY_MATCH);
-        rule.setEventType(eventType);
-        rule.setSource(source);
-        rule.setConditionScript(conditionScript);
-        rule.setWindowSeconds(ruleType == RuleType.AGGREGATE ? windowSeconds : null);
+        rule.setEventType(ruleType == RuleType.SEQUENCE ? null : eventType);
+        rule.setSource(ruleType == RuleType.SEQUENCE ? null : source);
+        rule.setConditionScript(ruleType == RuleType.SEQUENCE ? null : conditionScript);
+        rule.setWindowSeconds(ruleType == RuleType.AGGREGATE || ruleType == RuleType.SEQUENCE
+            ? windowSeconds : null);
         rule.setAggType(ruleType == RuleType.AGGREGATE ? aggType : null);
         rule.setAggField(ruleType == RuleType.AGGREGATE && aggType != AggregateType.COUNT
             ? AggregateFieldPath.normalize(aggField) : null);
-        rule.setGroupBy(ruleType == RuleType.AGGREGATE ? AggregateFieldPath.normalize(groupBy) : null);
+        rule.setGroupBy(ruleType == RuleType.AGGREGATE || ruleType == RuleType.SEQUENCE
+            ? AggregateFieldPath.normalize(groupBy) : null);
         rule.setThreshold(threshold != null ? threshold : 0.0);
         rule.setActive(active);
+        rule.getSequenceSteps().clear();
+        if (ruleType == RuleType.SEQUENCE && sequenceSteps != null) {
+            for (SequenceStep step : sequenceSteps) {
+                rule.getSequenceSteps().add(new com.tengencorp.tengen.entity.RuleSequenceStep(
+                    rule,
+                    step.position(),
+                    step.eventType(),
+                    step.source(),
+                    step.conditionScript()));
+            }
+        }
     }
 }

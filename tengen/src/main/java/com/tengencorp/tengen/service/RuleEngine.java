@@ -34,13 +34,15 @@ public class RuleEngine {
 
     private final AviatorEvaluatorInstance aviator;
     private final RuleEventRepository ruleEventRepository;
+    private final SequenceRuleService sequenceRuleService;
     private final Counter expressionErrors;
     private final Counter eventDataErrors;
 
     public RuleEngine(AviatorEvaluatorInstance aviator, RuleEventRepository ruleEventRepository,
-                      MeterRegistry meterRegistry) {
+                      SequenceRuleService sequenceRuleService, MeterRegistry meterRegistry) {
         this.aviator = aviator;
         this.ruleEventRepository = ruleEventRepository;
+        this.sequenceRuleService = sequenceRuleService;
         this.expressionErrors = meterRegistry.counter("tengen.rule.evaluation.errors",
             "reason", "expression");
         this.eventDataErrors = meterRegistry.counter("tengen.rule.evaluation.errors",
@@ -69,6 +71,9 @@ public class RuleEngine {
     }
 
     private RuleEvaluation evaluateInternal(Event event, Rule rule, boolean persist) {
+        if (rule.getRuleType() == RuleType.SEQUENCE) {
+            return sequenceRuleService.evaluate(event, rule, persist);
+        }
         Map<String, Object> env = buildEnv(event);
 
         String groupKey = rule.getRuleType() == RuleType.AGGREGATE

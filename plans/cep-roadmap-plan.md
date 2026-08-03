@@ -1,6 +1,6 @@
 # Tengen CEP Roadmap
 
-This document tracks progress against the CEP assessment and defines the next practical feature to implement.
+This document tracks progress against the CEP assessment and records the next practical feature to implement.
 
 ## Completed: Aggregate Correctness Slice
 
@@ -233,10 +233,23 @@ Plan: [`webhook-delivery-history-plan.md`](webhook-delivery-history-plan.md)
 - Allow controlled manual retry of dead-lettered rows without duplicating delivery intent.
 - Provide a user-controlled auto-refresh toggle, off by default, and a manual refresh action for active deliveries.
 
+## Implemented: Configurable Sequence Rules
+
+Implemented as the next CEP pattern slice:
+
+- Added `SEQUENCE` rules with ordered two-to-five event steps.
+- Added optional shared correlation through `groupBy` and a total event-time window.
+- Durable sequence instances advance the oldest eligible progress row and consume each event once per rule.
+- Sequence progress is revision-scoped and active instances are cancelled when rule lifecycle changes reset runtime state.
+- Completed sequence responses and webhook payloads include ordered step event details.
+- The admin console supports adding, removing, reordering, and testing sequence steps without persisting test events.
+
+The implementation intentionally leaves absence detection, watermarks, reusable events, and branching patterns for later slices.
+
 ## Later Assessment Roadmap
 
 1. Rule lifecycle/versioning and audit history — implemented with revision-scoped aggregate/trigger state, immutable snapshots, archive/unarchive, restore, and stale-write protection.
-2. Sequence and absence patterns.
-3. Watermarks and allowed lateness; event-time windows and future-event exclusion are already implemented.
-4. Broker connectors and replay/backfill.
-5. Event API response controls: optionally omit aggregate details for external producers and add an explicit `X-Idempotency-Replayed` response header.
+2. Absence patterns — not implemented; negative conditions and absence timers remain future work.
+3. Watermarks and allowed lateness — partially implemented: event-time windows and future-event exclusion are implemented, but watermark state, grace periods, and late-event correction/retraction are not.
+4. Broker connectors and replay/backfill — not implemented; ingestion currently uses the HTTP event API and idempotency replay is not historical backfill.
+5. Event API response controls — partially implemented: aggregate, sequence, queued, suppressed, and idempotent response data are available, but configurable aggregate omission for external producers and an explicit `X-Idempotency-Replayed` response header are not implemented.
