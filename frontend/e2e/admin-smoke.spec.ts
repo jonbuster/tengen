@@ -12,7 +12,9 @@ test("admin can log in and navigate the operational console", async ({ page }) =
   await signIn(page);
   await expect(page.getByRole("heading", { name: "Rules" })).toBeVisible();
 
-  await page.getByRole("main").getByRole("link", { name: "Run Test" }).click();
+  // Rule testing is available from the sidebar; the Rules page no longer has
+  // a duplicate action button in its header.
+  await page.getByRole("link", { name: "Run Test", exact: true }).click();
   await expect(page).toHaveURL(/\/rules\/test$/);
 
   await page.goto("/deliveries");
