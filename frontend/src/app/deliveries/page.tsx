@@ -6,6 +6,7 @@ import {
   Button,
   Chip,
   Container,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -21,6 +22,7 @@ import {
   Typography,
 } from "@mui/material";
 import HistoryIcon from "@mui/icons-material/History";
+import FilterAltIcon from "@mui/icons-material/FilterAlt";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import ReplayIcon from "@mui/icons-material/Replay";
 import Link from "next/link";
@@ -82,6 +84,7 @@ export default function DeliveriesPage() {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   useEffect(() => {
     const eventId = new URLSearchParams(window.location.search).get("eventId") ?? "";
@@ -144,6 +147,7 @@ export default function DeliveriesPage() {
 
   const rows = deliveryQuery.data?.content ?? [];
   const selectedDelivery = detailQuery.data?.delivery;
+  const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
   const columns = useMemo<GridColDef<WebhookDeliverySummary>[]>(
     () => [
@@ -216,6 +220,17 @@ export default function DeliveriesPage() {
           <Typography variant="h5">Webhook Deliveries</Typography>
         </Stack>
         <Stack direction="row" spacing={1} alignItems="center">
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<FilterAltIcon />}
+            onClick={() => setFiltersOpen((current) => !current)}
+            aria-expanded={filtersOpen}
+            aria-controls="delivery-filters"
+          >
+            {filtersOpen ? "Hide filters" : "Show filters"}
+            {activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+          </Button>
           <FormControlLabel
             control={<Switch checked={autoRefresh} onChange={(event) => toggleAutoRefresh(event.target.checked)} />}
             label="Auto-refresh"
@@ -226,22 +241,24 @@ export default function DeliveriesPage() {
         </Stack>
       </Stack>
 
-      <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} sx={{ mb: 2 }}>
-        <FormControl size="small" sx={{ minWidth: 180 }}>
-          <InputLabel>Status</InputLabel>
-          <Select label="Status" value={filters.status} onChange={(event) => setFilter("status", event.target.value)}>
-            <MenuItem value="">All statuses</MenuItem>
-            {STATUS_OPTIONS.map((status) => (
-              <MenuItem key={status} value={status}>{statusLabel(status)}</MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-        <TextField size="small" label="Rule ID" value={filters.ruleId} onChange={(event) => setFilter("ruleId", event.target.value)} />
-        <TextField size="small" label="Event ID" value={filters.eventId} onChange={(event) => setFilter("eventId", event.target.value)} />
-        <TextField size="small" label="Search rule or destination" value={filters.search} onChange={(event) => setFilter("search", event.target.value)} sx={{ minWidth: 230 }} />
-        <TextField size="small" type="datetime-local" label="From" value={filters.from} onChange={(event) => setFilter("from", event.target.value)} InputLabelProps={{ shrink: true }} />
-        <TextField size="small" type="datetime-local" label="To" value={filters.to} onChange={(event) => setFilter("to", event.target.value)} InputLabelProps={{ shrink: true }} />
-      </Stack>
+      <Collapse in={filtersOpen} unmountOnExit>
+        <Stack id="delivery-filters" direction={{ xs: "column", md: "row" }} spacing={1.5} sx={{ mb: 2 }}>
+          <FormControl size="small" sx={{ minWidth: 180 }}>
+            <InputLabel>Status</InputLabel>
+            <Select label="Status" value={filters.status} onChange={(event) => setFilter("status", event.target.value)}>
+              <MenuItem value="">All statuses</MenuItem>
+              {STATUS_OPTIONS.map((status) => (
+                <MenuItem key={status} value={status}>{statusLabel(status)}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <TextField size="small" label="Rule ID" value={filters.ruleId} onChange={(event) => setFilter("ruleId", event.target.value)} />
+          <TextField size="small" label="Event ID" value={filters.eventId} onChange={(event) => setFilter("eventId", event.target.value)} />
+          <TextField size="small" label="Search rule or destination" value={filters.search} onChange={(event) => setFilter("search", event.target.value)} sx={{ minWidth: 230 }} />
+          <TextField size="small" type="datetime-local" label="From" value={filters.from} onChange={(event) => setFilter("from", event.target.value)} InputLabelProps={{ shrink: true }} />
+          <TextField size="small" type="datetime-local" label="To" value={filters.to} onChange={(event) => setFilter("to", event.target.value)} InputLabelProps={{ shrink: true }} />
+        </Stack>
+      </Collapse>
 
       <Stack direction="row" justifyContent="space-between" sx={{ mb: 1 }}>
         <Typography variant="body2" color="text.secondary">

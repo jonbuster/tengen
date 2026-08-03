@@ -39,14 +39,17 @@ export function NavBar() {
   const pathname = usePathname();
   const router = useRouter();
   const theme = useTheme();
-  const { logout, isAuthenticated } = useAuth();
+  const { logout, isAuthenticated, checking } = useAuth();
 
   const handleLogout = async () => {
     await logout();
     router.push("/login");
   };
 
-  if (!isAuthenticated || pathname === "/login") {
+  // Keep the permanent drawer mounted while the session check is in flight.
+  // Otherwise protected page content paints first and the sidebar appears
+  // only after /api/auth/session resolves, causing a visible layout shift.
+  if ((!isAuthenticated && !checking) || pathname === "/login") {
     return null;
   }
 
@@ -108,8 +111,8 @@ export function NavBar() {
         </List>
         <Box sx={{ flexGrow: 1 }} />
         <Box sx={{ p: 2 }}>
-          <Button fullWidth variant="outlined" color="inherit" onClick={handleLogout}>
-            Logout
+          <Button fullWidth variant="outlined" color="inherit" onClick={handleLogout} disabled={checking}>
+            {checking ? "Checking session…" : "Logout"}
           </Button>
         </Box>
       </Box>

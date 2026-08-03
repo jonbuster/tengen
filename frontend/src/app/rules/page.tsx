@@ -168,9 +168,6 @@ export default function RulesPage() {
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
         <Typography variant="h5">Rules</Typography>
         <Stack direction="row" gap={1}>
-          <Button component={Link} href="/rules/test" variant="outlined">
-            Run Test
-          </Button>
           <Button component={Link} href="/rules/new" variant="contained">
             New Rule
           </Button>

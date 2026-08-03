@@ -3,8 +3,10 @@
 import {
   Alert,
   Box,
+  Button,
   Chip,
   Container,
+  Collapse,
   FormControl,
   InputLabel,
   MenuItem,
@@ -14,6 +16,7 @@ import {
   Typography,
 } from "@mui/material";
 import EventNoteIcon from "@mui/icons-material/EventNote";
+import FilterAltIcon from "@mui/icons-material/FilterAlt";
 import { type GridColDef, type GridPaginationModel, type GridRowParams } from "@mui/x-data-grid";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
@@ -54,6 +57,7 @@ export default function EventsPage() {
     page: 0,
     pageSize: 25,
   });
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const eventQuery = useQuery<EventHistoryPage>({
     queryKey: ["event-history", paginationModel, filters],
@@ -119,46 +123,71 @@ export default function EventsPage() {
   );
 
   const rows = eventQuery.data?.content ?? [];
+  const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
   return (
     <Container maxWidth={false} sx={{ py: 4 }}>
-      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
-        <EventNoteIcon color="primary" />
-        <Box>
-          <Typography variant="h5">Event Explorer</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Trace accepted events through matched rules, webhook actions, and delivery history.
-          </Typography>
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        justifyContent="space-between"
+        alignItems={{ xs: "stretch", sm: "center" }}
+        spacing={1}
+        sx={{ mb: 2 }}
+      >
+        <Stack direction="row" spacing={1} alignItems="center">
+          <EventNoteIcon color="primary" />
+          <Box>
+            <Typography variant="h5">Event Explorer</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Trace accepted events through matched rules, webhook actions, and delivery history.
+            </Typography>
+          </Box>
+        </Stack>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<FilterAltIcon />}
+          onClick={() => setFiltersOpen((current) => !current)}
+          aria-expanded={filtersOpen}
+          aria-controls="event-filters"
+          sx={{ alignSelf: { xs: "flex-start", sm: "auto" } }}
+        >
+          {filtersOpen ? "Hide filters" : "Show filters"}
+          {activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+        </Button>
+      </Stack>
+
+      <Collapse in={filtersOpen} unmountOnExit>
+        <Box id="event-filters">
+          <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} sx={{ mb: 2 }}>
+            <TextField size="small" label="Event ID" value={filters.eventId} onChange={(event) => setFilter("eventId", event.target.value)} />
+            <TextField size="small" label="Type" value={filters.type} onChange={(event) => setFilter("type", event.target.value)} />
+            <TextField size="small" label="Source" value={filters.source} onChange={(event) => setFilter("source", event.target.value)} />
+            <TextField size="small" label="API key ID" value={filters.apiKeyId} onChange={(event) => setFilter("apiKeyId", event.target.value)} />
+            <FormControl size="small" sx={{ minWidth: 145 }}>
+              <InputLabel>Matched</InputLabel>
+              <Select label="Matched" value={filters.matched} onChange={(event) => setFilter("matched", event.target.value)}>
+                <MenuItem value="">All</MenuItem>
+                <MenuItem value="true">Matched</MenuItem>
+                <MenuItem value="false">No match</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 170 }}>
+              <InputLabel>Trace</InputLabel>
+              <Select label="Trace" value={filters.traceAvailable} onChange={(event) => setFilter("traceAvailable", event.target.value)}>
+                <MenuItem value="">All events</MenuItem>
+                <MenuItem value="true">Trace available</MenuItem>
+                <MenuItem value="false">Legacy / unavailable</MenuItem>
+              </Select>
+            </FormControl>
+          </Stack>
+
+          <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} sx={{ mb: 2 }}>
+            <TextField size="small" type="datetime-local" label="Received from" value={filters.from} onChange={(event) => setFilter("from", event.target.value)} InputLabelProps={{ shrink: true }} />
+            <TextField size="small" type="datetime-local" label="Received to" value={filters.to} onChange={(event) => setFilter("to", event.target.value)} InputLabelProps={{ shrink: true }} />
+          </Stack>
         </Box>
-      </Stack>
-
-      <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} sx={{ mb: 2 }}>
-        <TextField size="small" label="Event ID" value={filters.eventId} onChange={(event) => setFilter("eventId", event.target.value)} />
-        <TextField size="small" label="Type" value={filters.type} onChange={(event) => setFilter("type", event.target.value)} />
-        <TextField size="small" label="Source" value={filters.source} onChange={(event) => setFilter("source", event.target.value)} />
-        <TextField size="small" label="API key ID" value={filters.apiKeyId} onChange={(event) => setFilter("apiKeyId", event.target.value)} />
-        <FormControl size="small" sx={{ minWidth: 145 }}>
-          <InputLabel>Matched</InputLabel>
-          <Select label="Matched" value={filters.matched} onChange={(event) => setFilter("matched", event.target.value)}>
-            <MenuItem value="">All</MenuItem>
-            <MenuItem value="true">Matched</MenuItem>
-            <MenuItem value="false">No match</MenuItem>
-          </Select>
-        </FormControl>
-        <FormControl size="small" sx={{ minWidth: 170 }}>
-          <InputLabel>Trace</InputLabel>
-          <Select label="Trace" value={filters.traceAvailable} onChange={(event) => setFilter("traceAvailable", event.target.value)}>
-            <MenuItem value="">All events</MenuItem>
-            <MenuItem value="true">Trace available</MenuItem>
-            <MenuItem value="false">Legacy / unavailable</MenuItem>
-          </Select>
-        </FormControl>
-      </Stack>
-
-      <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} sx={{ mb: 2 }}>
-        <TextField size="small" type="datetime-local" label="Received from" value={filters.from} onChange={(event) => setFilter("from", event.target.value)} InputLabelProps={{ shrink: true }} />
-        <TextField size="small" type="datetime-local" label="Received to" value={filters.to} onChange={(event) => setFilter("to", event.target.value)} InputLabelProps={{ shrink: true }} />
-      </Stack>
+      </Collapse>
 
       {eventQuery.error && <Alert severity="error" sx={{ mb: 2 }}>{errorMessage(eventQuery.error)}</Alert>}
 
