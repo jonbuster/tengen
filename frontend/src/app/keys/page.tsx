@@ -23,9 +23,12 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, errorMessage } from "@/lib/api";
+import { formatTimestamp } from "@/lib/formatters";
+import { usePreferences } from "@/lib/preferences";
 import { ApiKey, ApiKeyRequest } from "@/lib/types";
 
 export default function ApiKeysPage() {
+  const { preferences } = usePreferences();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [createdKey, setCreatedKey] = useState<ApiKey | null>(null);
@@ -112,7 +115,7 @@ export default function ApiKeysPage() {
                     size="small"
                   />
                 </TableCell>
-                <TableCell>{key.expiresAt ? new Date(key.expiresAt).toLocaleString() : "Never"}</TableCell>
+                <TableCell>{key.expiresAt ? formatTimestamp(key.expiresAt, preferences.timeDisplay) : "Never"}</TableCell>
                 <TableCell>
                   {key.active && (
                     <Button size="small" color="error" onClick={() => revokeMutation.mutate(key.id)}>

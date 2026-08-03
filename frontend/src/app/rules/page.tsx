@@ -21,7 +21,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, errorMessage } from "@/lib/api";
 import { Rule } from "@/lib/types";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+
+const EMPTY_RULES: Rule[] = [];
+
+const getRuleId = (row: Rule) => row.id;
 
 function revisionHeaders(rule: Rule) {
   return { headers: { "If-Match": `"${rule.revision}"` } };
@@ -33,7 +37,7 @@ export default function RulesPage() {
   const [error, setError] = useState<string | null>(null);
   const [includeArchived, setIncludeArchived] = useState(false);
 
-  const { data: rules = [], isLoading } = useQuery<Rule[]>({
+  const { data: rules = EMPTY_RULES, isLoading } = useQuery<Rule[]>({
     queryKey: ["rules", includeArchived],
     queryFn: async () =>
       (await api.get(`/rules?includeArchived=${includeArchived}`)).data,
@@ -60,8 +64,11 @@ export default function RulesPage() {
     onSuccess: invalidate,
     onError: (err) => setError(errorMessage(err)),
   });
+  const toggleRule = toggleMutation.mutate;
+  const archiveRule = archiveMutation.mutate;
+  const unarchiveRule = unarchiveMutation.mutate;
 
-  const columns: GridColDef[] = [
+  const columns = useMemo<GridColDef[]>(() => [
     { field: "id", headerName: "ID", width: 70 },
     { field: "name", headerName: "Name", flex: 1, minWidth: 180 },
     { field: "revision", headerName: "Revision", width: 95 },
@@ -127,7 +134,7 @@ export default function RulesPage() {
               key="unarchive"
               icon={<RestoreIcon />}
               label="Unarchive"
-              onClick={() => unarchiveMutation.mutate(rule)}
+              onClick={() => unarchiveRule(rule)}
             />,
           );
         } else {
@@ -136,7 +143,7 @@ export default function RulesPage() {
               key="toggle"
               icon={<ToggleOnIcon />}
               label={rule.active ? "Deactivate" : "Activate"}
-              onClick={() => toggleMutation.mutate(rule)}
+              onClick={() => toggleRule(rule)}
             />,
             <GridActionsCellItem
               key="archive"
@@ -144,7 +151,7 @@ export default function RulesPage() {
               label="Archive"
               onClick={() => {
                 if (window.confirm(`Archive rule "${rule.name}"?`)) {
-                  archiveMutation.mutate(rule);
+                  archiveRule(rule);
                 }
               }}
             />,
@@ -153,7 +160,7 @@ export default function RulesPage() {
         return actions;
       },
     },
-  ];
+  ], [archiveRule, router, toggleRule, unarchiveRule]);
 
   return (
     <Container maxWidth={false} sx={{ py: 4 }}>
@@ -192,7 +199,7 @@ export default function RulesPage() {
           columns={columns}
           loading={isLoading}
           disableRowSelectionOnClick
-          getRowId={(row: Rule) => row.id}
+          getRowId={getRuleId}
         />
       </Box>
     </Container>

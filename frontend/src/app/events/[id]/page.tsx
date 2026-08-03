@@ -23,6 +23,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { api, errorMessage } from "@/lib/api";
+import { formatTimestamp } from "@/lib/formatters";
+import { usePreferences } from "@/lib/preferences";
 import {
   EventHistoryDetail,
   EventRuleActionOutcome,
@@ -32,6 +34,7 @@ import {
 export default function EventDetailPage() {
   const params = useParams<{ id: string }>();
   const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const { preferences } = usePreferences();
   const eventQuery = useQuery<EventHistoryDetail>({
     queryKey: ["event-history", eventId],
     queryFn: async () => (await api.get(`/event-history/${eventId}`)).data,
@@ -69,7 +72,7 @@ export default function EventDetailPage() {
         <Box>
           <Typography variant="h5">Event {summary.id}</Typography>
           <Typography variant="body2" color="text.secondary">
-            {summary.type} from {summary.source} · received {formatDate(summary.receivedAt)}
+            {summary.type} from {summary.source} · received {formatTimestamp(summary.receivedAt, preferences.timeDisplay)}
           </Typography>
         </Box>
         {detail.deliveries.length > 0 && (
@@ -88,7 +91,7 @@ export default function EventDetailPage() {
       <Stack spacing={2}>
         <Paper variant="outlined" sx={{ p: 2 }}>
           <Typography variant="subtitle1" sx={{ mb: 1 }}>Event payload</Typography>
-          <Box component="pre" sx={{ m: 0, p: 2, bgcolor: "grey.100", borderRadius: 1, overflow: "auto", maxHeight: 360, fontSize: 13 }}>
+          <Box component="pre" sx={{ m: 0, p: 2, bgcolor: "action.hover", borderRadius: 1, overflow: "auto", maxHeight: 360, fontSize: 13 }}>
             {JSON.stringify(payload, null, 2)}
           </Box>
         </Paper>
@@ -192,8 +195,4 @@ function DeliveryStatusChip({ status }: { status: WebhookDeliveryStatus }) {
 
 function formatReason(reason: string) {
   return reason.replaceAll("_", " ").toLowerCase();
-}
-
-function formatDate(value: string | null | undefined) {
-  return value ? new Date(value).toLocaleString() : "—";
 }

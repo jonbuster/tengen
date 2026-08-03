@@ -19,6 +19,8 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, errorMessage } from "@/lib/api";
+import { formatTimestamp } from "@/lib/formatters";
+import { usePreferences } from "@/lib/preferences";
 import { EventHistoryPage, EventHistorySummary } from "@/lib/types";
 
 type Filters = {
@@ -45,6 +47,7 @@ const INITIAL_FILTERS: Filters = {
 
 export default function EventsPage() {
   const router = useRouter();
+  const { preferences } = usePreferences();
   const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
   const [paginationModel, setPaginationModel] = useState<GridPaginationModel>({
     page: 0,
@@ -102,16 +105,16 @@ export default function EventsPage() {
         field: "occurredAt",
         headerName: "Occurred",
         width: 185,
-        renderCell: (params) => formatDate(params.value as string),
+        renderCell: (params) => formatTimestamp(params.value as string, preferences.timeDisplay),
       },
       {
         field: "receivedAt",
         headerName: "Received",
         width: 185,
-        renderCell: (params) => formatDate(params.value as string),
+        renderCell: (params) => formatTimestamp(params.value as string, preferences.timeDisplay),
       },
     ],
-    [],
+    [preferences.timeDisplay],
   );
 
   const rows = eventQuery.data?.content ?? [];
@@ -196,10 +199,6 @@ function OutcomeSummary({ event }: { event: EventHistorySummary }) {
       {suppressed > 0 && <Chip label={`${suppressed} suppressed`} color="warning" size="small" />}
     </Stack>
   );
-}
-
-function formatDate(value: string | null | undefined) {
-  return value ? new Date(value).toLocaleString() : "—";
 }
 
 function toIso(value: string) {

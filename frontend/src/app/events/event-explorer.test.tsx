@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import EventDetailPage from "./[id]/page";
 import { api } from "@/lib/api";
+import { PreferencesProvider } from "@/lib/preferences";
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "42" }),
@@ -27,7 +28,9 @@ function renderPage() {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <EventDetailPage />
+      <PreferencesProvider>
+        <EventDetailPage />
+      </PreferencesProvider>
     </QueryClientProvider>,
   );
 }

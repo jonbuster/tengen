@@ -10,13 +10,17 @@ import {
   ListItemIcon,
   ListItemText,
   Typography,
+  darken,
+  useTheme,
 } from "@mui/material";
 import KeyIcon from "@mui/icons-material/Key";
 import RuleIcon from "@mui/icons-material/Rule";
 import ScienceIcon from "@mui/icons-material/Science";
 import HistoryIcon from "@mui/icons-material/History";
 import EventNoteIcon from "@mui/icons-material/EventNote";
+import SettingsIcon from "@mui/icons-material/Settings";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 
@@ -28,11 +32,13 @@ const NAV_ITEMS = [
   { href: "/keys", label: "API Keys", icon: <KeyIcon /> },
   { href: "/deliveries", label: "Deliveries", icon: <HistoryIcon /> },
   { href: "/events", label: "Events", icon: <EventNoteIcon /> },
+  { href: "/settings", label: "Settings", icon: <SettingsIcon /> },
 ];
 
 export function NavBar() {
   const pathname = usePathname();
   const router = useRouter();
+  const theme = useTheme();
   const { logout, isAuthenticated } = useAuth();
 
   const handleLogout = async () => {
@@ -44,6 +50,14 @@ export function NavBar() {
     return null;
   }
 
+  const sidebarTop = darken(theme.palette.primary.main, 0.45);
+  const sidebarMid = darken(theme.palette.primary.main, 0.35);
+  const sidebarBottom = darken(theme.palette.primary.main, 0.55);
+  const sidebarText = theme.palette.getContrastText(sidebarMid);
+  const overlayChannel = sidebarText.toLowerCase() === "#fff" || sidebarText.toLowerCase() === "#ffffff"
+    ? "255,255,255"
+    : "0,0,0";
+
   return (
     <Drawer
       variant="permanent"
@@ -53,8 +67,8 @@ export function NavBar() {
         "& .MuiDrawer-paper": {
           width: DRAWER_WIDTH,
           boxSizing: "border-box",
-          background: "linear-gradient(180deg, #1e3a5f 0%, #16324f 50%, #122b45 100%)",
-          color: "#fff",
+          background: `linear-gradient(180deg, ${sidebarTop} 0%, ${sidebarMid} 50%, ${sidebarBottom} 100%)`,
+          color: sidebarText,
           borderRight: "none",
         },
       }}
@@ -62,7 +76,10 @@ export function NavBar() {
       <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
         <Typography variant="h6" sx={{ p: 2, fontWeight: 700 }}>
           <Link href="/rules" style={{ color: "inherit", textDecoration: "none" }}>
-            Tengen
+            <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
+              <Image src="/branding/tengen-torii-24.png" alt="" width={24} height={24} priority unoptimized />
+              Tengen
+            </Box>
           </Link>
         </Typography>
         <List sx={{ px: 1 }}>
@@ -76,8 +93,8 @@ export function NavBar() {
                   sx={{
                     borderRadius: 1,
                     fontWeight: active ? 700 : 400,
-                    backgroundColor: active ? "rgba(255,255,255,0.12)" : "transparent",
-                    "&:hover": { backgroundColor: "rgba(255,255,255,0.08)" },
+                    backgroundColor: active ? `rgba(${overlayChannel},0.16)` : "transparent",
+                    "&:hover": { backgroundColor: `rgba(${overlayChannel},0.1)` },
                   }}
                 >
                   <ListItemIcon sx={{ color: "inherit", minWidth: 36 }}>

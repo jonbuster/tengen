@@ -21,12 +21,15 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, errorMessage } from "@/lib/api";
+import { formatTimestamp } from "@/lib/formatters";
+import { usePreferences } from "@/lib/preferences";
 import { Rule, RuleRevisionDetail, RuleRevisionPage } from "@/lib/types";
 
 export default function RuleHistoryPage() {
   const params = useParams<{ id: string }>();
   const id = Number(params.id);
   const router = useRouter();
+  const { preferences } = usePreferences();
   const queryClient = useQueryClient();
   const [selectedRevision, setSelectedRevision] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +115,7 @@ export default function RuleHistoryPage() {
               >
                 <ListItemText
                   primary={`Revision ${item.revision} · ${item.changeType}`}
-                  secondary={`${item.actor} · ${new Date(item.changedAt).toLocaleString()}`}
+                  secondary={`${item.actor} · ${formatTimestamp(item.changedAt, preferences.timeDisplay)}`}
                 />
               </ListItemButton>
             ))}
@@ -132,7 +135,7 @@ export default function RuleHistoryPage() {
                     Revision {detail.revision.revision}
                   </Typography>
                   <Typography color="text.secondary">
-                    {detail.revision.changeType} by {detail.revision.actor} on {new Date(detail.revision.changedAt).toLocaleString()}
+                    {detail.revision.changeType} by {detail.revision.actor} on {formatTimestamp(detail.revision.changedAt, preferences.timeDisplay)}
                   </Typography>
                 </Box>
                 {selected && selected.revision !== rule.revision && (
@@ -159,7 +162,7 @@ export default function RuleHistoryPage() {
                 sx={{
                   m: 0,
                   p: 2,
-                  bgcolor: "grey.100",
+                  bgcolor: "action.hover",
                   borderRadius: 1,
                   overflow: "auto",
                   fontSize: 13,

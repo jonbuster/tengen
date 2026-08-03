@@ -33,6 +33,8 @@ import {
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { api, errorMessage } from "@/lib/api";
+import { formatTimestamp } from "@/lib/formatters";
+import { usePreferences } from "@/lib/preferences";
 import {
   WebhookDeliveryDetail,
   WebhookDeliveryPage,
@@ -74,6 +76,7 @@ const INITIAL_FILTERS: Filters = {
 
 export default function DeliveriesPage() {
   const queryClient = useQueryClient();
+  const { preferences } = usePreferences();
   const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
   const [paginationModel, setPaginationModel] = useState<GridPaginationModel>({
     page: 0,
@@ -169,13 +172,13 @@ export default function DeliveriesPage() {
         field: "nextAttemptAt",
         headerName: "Next attempt",
         width: 180,
-        renderCell: (params) => formatDate(params.value as string),
+        renderCell: (params) => formatTimestamp(params.value as string, preferences.timeDisplay),
       },
       {
         field: "createdAt",
         headerName: "Created",
         width: 180,
-        renderCell: (params) => formatDate(params.value as string),
+        renderCell: (params) => formatTimestamp(params.value as string, preferences.timeDisplay),
       },
       {
         field: "lastStatusCode",
@@ -191,7 +194,7 @@ export default function DeliveriesPage() {
         renderCell: (params) => params.value || "—",
       },
     ],
-    [],
+    [preferences.timeDisplay],
   );
 
   const setFilter = (key: keyof Filters, value: string) => {
@@ -249,7 +252,7 @@ export default function DeliveriesPage() {
           {autoRefresh ? "Auto-refresh monitors active deliveries." : "Auto-refresh is off."}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Last updated: {lastUpdated ? lastUpdated.toLocaleString() : "—"}
+          Last updated: {formatTimestamp(lastUpdated, preferences.timeDisplay)}
         </Typography>
       </Stack>
 
@@ -293,17 +296,17 @@ export default function DeliveriesPage() {
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Trigger {selectedDelivery.triggerMode} · Scope {selectedDelivery.scopeKey ?? "global"}
-                {selectedDelivery.windowStart ? ` · Window ${formatDate(selectedDelivery.windowStart)}` : ""}
+                {selectedDelivery.windowStart ? ` · Window ${formatTimestamp(selectedDelivery.windowStart, preferences.timeDisplay)}` : ""}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Created {formatDate(selectedDelivery.createdAt)} · Next attempt {formatDate(selectedDelivery.nextAttemptAt)} · Last attempt {formatDate(selectedDelivery.lastAttemptAt)} · Delivered {formatDate(selectedDelivery.deliveredAt)}
+                Created {formatTimestamp(selectedDelivery.createdAt, preferences.timeDisplay)} · Next attempt {formatTimestamp(selectedDelivery.nextAttemptAt, preferences.timeDisplay)} · Last attempt {formatTimestamp(selectedDelivery.lastAttemptAt, preferences.timeDisplay)} · Delivered {formatTimestamp(selectedDelivery.deliveredAt, preferences.timeDisplay)}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                HTTP {selectedDelivery.lastStatusCode ?? "—"} · Manually retried {formatDate(selectedDelivery.manuallyRetriedAt)}
+                HTTP {selectedDelivery.lastStatusCode ?? "—"} · Manually retried {formatTimestamp(selectedDelivery.manuallyRetriedAt, preferences.timeDisplay)}
               </Typography>
               {selectedDelivery.lastError && <Alert severity="warning">{selectedDelivery.lastError}</Alert>}
               <Typography variant="subtitle2">Payload</Typography>
-              <Box component="pre" sx={{ m: 0, p: 2, bgcolor: "grey.100", borderRadius: 1, overflow: "auto", maxHeight: 300, fontSize: 13 }}>
+              <Box component="pre" sx={{ m: 0, p: 2, bgcolor: "action.hover", borderRadius: 1, overflow: "auto", maxHeight: 300, fontSize: 13 }}>
                 {JSON.stringify(detailQuery.data.payload, null, 2)}
               </Box>
             </Stack>
@@ -339,10 +342,6 @@ function StatusChip({ status }: { status: WebhookDeliveryStatus }) {
 
 function statusLabel(status: WebhookDeliveryStatus) {
   return status.replaceAll("_", " ");
-}
-
-function formatDate(value: string | null | undefined) {
-  return value ? new Date(value).toLocaleString() : "—";
 }
 
 function toIso(value: string) {

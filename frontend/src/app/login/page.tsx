@@ -1,17 +1,20 @@
 "use client";
 
-import { Alert, Box, Button, Paper, TextField, Typography } from "@mui/material";
+import { Alert, Box, Button, Paper, TextField, Typography, darken, useTheme } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 
 export default function LoginPage() {
+  const theme = useTheme();
   const { login } = useAuth();
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const accent = theme.palette.primary.main;
+  const gradient = `linear-gradient(135deg, ${darken(accent, 0.45)} 0%, ${darken(accent, 0.35)} 50%, ${darken(accent, 0.55)} 100%)`;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,15 +37,15 @@ export default function LoginPage() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "linear-gradient(135deg, #1e3a5f 0%, #16324f 50%, #122b45 100%)",
+        background: gradient,
       }}
     >
       <Paper sx={{ p: 4, width: 360 }}>
         <Typography variant="h5" component="h1" gutterBottom align="center">
-          Tengen Admin
+          Tengen
         </Typography>
         <Typography variant="body2" color="text.secondary" align="center" sx={{ mb: 3 }}>
-          Sign in to manage rules
+          Sign in to manage your rules and events
         </Typography>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
