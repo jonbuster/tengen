@@ -6,13 +6,16 @@ import com.tengencorp.tengen.dto.EventHistorySummary;
 import com.tengencorp.tengen.dto.EventRuleOutcomeResponse;
 import com.tengencorp.tengen.dto.AbsenceInstanceResponse;
 import com.tengencorp.tengen.dto.WebhookDeliverySummary;
+import com.tengencorp.tengen.dto.RabbitMqBrokerMetadata;
 import com.tengencorp.tengen.entity.Event;
+import com.tengencorp.tengen.entity.IngestionOrigin;
 import com.tengencorp.tengen.entity.EventTimeStatus;
 import com.tengencorp.tengen.exception.NotFoundException;
 import com.tengencorp.tengen.repository.EventRepository;
 import com.tengencorp.tengen.repository.EventRuleOutcomeRepository;
 import com.tengencorp.tengen.repository.RuleAbsenceInstanceRepository;
 import com.tengencorp.tengen.repository.WebhookOutboxRepository;
+import com.tengencorp.tengen.repository.RabbitMqMessageReceiptRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -36,17 +39,20 @@ public class EventHistoryAdminService {
     private final EventRuleOutcomeRepository outcomeRepository;
     private final WebhookOutboxRepository outboxRepository;
     private final RuleAbsenceInstanceRepository absenceInstanceRepository;
+    private final RabbitMqMessageReceiptRepository rabbitMqMessageReceiptRepository;
     private final ObjectMapper objectMapper;
 
     public EventHistoryAdminService(EventRepository eventRepository,
                                     EventRuleOutcomeRepository outcomeRepository,
                                     WebhookOutboxRepository outboxRepository,
                                     RuleAbsenceInstanceRepository absenceInstanceRepository,
+                                    RabbitMqMessageReceiptRepository rabbitMqMessageReceiptRepository,
                                     ObjectMapper objectMapper) {
         this.eventRepository = eventRepository;
         this.outcomeRepository = outcomeRepository;
         this.outboxRepository = outboxRepository;
         this.absenceInstanceRepository = absenceInstanceRepository;
+        this.rabbitMqMessageReceiptRepository = rabbitMqMessageReceiptRepository;
         this.objectMapper = objectMapper;
     }
 
@@ -54,6 +60,15 @@ public class EventHistoryAdminService {
     public EventHistoryPage list(int page, int size, Long eventId, String type, String source,
                                  Long apiKeyId, Boolean matched, Boolean traceAvailable,
                                  EventTimeStatus eventTimeStatus, Instant from, Instant to) {
+        return list(page, size, eventId, type, source, apiKeyId, matched, traceAvailable,
+            eventTimeStatus, null, from, to);
+    }
+
+    @Transactional(readOnly = true)
+    public EventHistoryPage list(int page, int size, Long eventId, String type, String source,
+                                 Long apiKeyId, Boolean matched, Boolean traceAvailable,
+                                 EventTimeStatus eventTimeStatus, IngestionOrigin ingestionOrigin,
+                                 Instant from, Instant to) {
         validatePage(page, size);
         if (from != null && to != null && !from.isBefore(to)) {
             throw new IllegalArgumentException("from must be earlier than to");
@@ -102,6 +117,10 @@ public class EventHistoryAdminService {
             specification = specification.and((root, query, builder) ->
                 builder.equal(root.get("eventTimeStatus"), eventTimeStatus));
         }
+        if (ingestionOrigin != null) {
+            specification = specification.and((root, query, builder) ->
+                builder.equal(root.get("ingestionOrigin"), ingestionOrigin));
+        }
         if (from != null) {
             specification = specification.and((root, query, builder) ->
                 builder.greaterThanOrEqualTo(root.get("receivedAt"), from));
@@ -142,7 +161,22 @@ public class EventHistoryAdminService {
         absenceInstanceRepository.findByResolvedByEvent_IdOrderByCreatedAtAscIdAsc(id)
             .forEach(instance -> absenceById.put(instance.getId(), AbsenceInstanceResponse.from(instance)));
         List<AbsenceInstanceResponse> absenceInstances = new ArrayList<>(absenceById.values());
-        return EventHistoryDetail.from(event, outcomes, deliveries, absenceInstances);
+        RabbitMqBrokerMetadata rabbitMqMetadata = rabbitMqMessageReceiptRepository
+            .findFirstByEvent_IdOrderByProcessedAtDescIdDesc(id)
+            .map(receipt -> {
+                var connector = receipt.getConnector();
+                return new RabbitMqBrokerMetadata(
+                    connector != null ? connector.getId() : null,
+                    connector != null ? connector.getConnectorKey() : null,
+                    connector != null ? connector.getDisplayName() : null,
+                    receipt.getQueueName(),
+                    receipt.getSourceExchange(),
+                    receipt.getRoutingKey(),
+                    receipt.getMessageId(),
+                    receipt.getProcessedAt());
+            })
+            .orElse(null);
+        return EventHistoryDetail.from(event, outcomes, deliveries, absenceInstances, rabbitMqMetadata);
     }
 
     private void validatePage(int page, int size) {

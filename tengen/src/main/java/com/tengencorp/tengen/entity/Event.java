@@ -54,6 +54,16 @@ public class Event {
     @JoinColumn(name = "api_key_id")
     private ApiKey apiKey;
 
+    /** Transport that accepted this event; existing rows are backfilled to HTTP. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "ingestion_origin", nullable = false, length = 20)
+    private IngestionOrigin ingestionOrigin = IngestionOrigin.HTTP;
+
+    /** Connector metadata is kept out of the event payload and is nullable for HTTP. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "rabbitmq_connector_id")
+    private RabbitMqConnector rabbitMqConnector;
+
     /** Null for events written before Event Explorer was introduced. */
     @Column(name = "processing_trace_version")
     private Short processingTraceVersion;
@@ -83,6 +93,9 @@ public class Event {
         }
         if (receivedAt == null) {
             receivedAt = Instant.now();
+        }
+        if (ingestionOrigin == null) {
+            ingestionOrigin = IngestionOrigin.HTTP;
         }
     }
 

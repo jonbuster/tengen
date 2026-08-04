@@ -49,6 +49,7 @@ An accepted event response reports which rules matched, which webhook actions we
 | **Deliveries** | Filter webhook history, inspect attempts and errors, refresh the list, and retry dead-lettered deliveries. |
 | **Events** | Search accepted events, inspect their payloads, review matched-rule outcomes, and follow webhook deliveries. |
 | **Replays** | Run bounded, analysis-only evaluations against immutable CONDITION or AGGREGATE rule revisions. |
+| **Connectors · RabbitMQ** | Save, test, enable, disable, and monitor one backend-managed RabbitMQ queue consumer. |
 
 Delivery auto-refresh is off by default. It can be enabled when a near-real-time view of active deliveries is useful.
 
@@ -56,12 +57,28 @@ Delivery auto-refresh is off by default. It can be enabled when a near-real-time
 
 For local development, you need Docker, Java 21, and Node.js with npm.
 
-Start PostgreSQL and the Spring Boot backend:
+For local development, keep deployment settings in an ignored root `.env` file.
+The repository does not track environment files. The included Compose profile
+uses `tengen` / `tengen` for a fresh local RabbitMQ volume; change those values
+before using a shared environment.
+
+Start PostgreSQL and the optional RabbitMQ broker:
 
 ```bash
-docker compose -f tengen/docker-compose.yml up -d db
+docker compose --env-file .env \
+  -f tengen/docker-compose.yml \
+  --profile rabbitmq up -d db rabbitmq
+```
+
+Load the same settings before starting Spring Boot manually:
+
+```bash
+set -a
+source .env
+set +a
+
 cd tengen
-WEBHOOK_WORKER_ENABLED=false ./mvnw spring-boot:run
+./mvnw spring-boot:run
 ```
 
 Schema changes are managed by Flyway. Before the first start of this version
@@ -87,6 +104,63 @@ npm run dev
 
 > Change `ADMIN_PASSWORD` and `JWT_SECRET` before using Tengen outside local development.
 
+### RabbitMQ connector (optional)
+
+The **Connectors · RabbitMQ** page configures a backend consumer for one
+pre-created durable queue. The browser does not connect to RabbitMQ. The
+selected Tengen API key still controls event type/source authorization, and
+RabbitMQ deliveries require a unique AMQP `message_id`.
+
+The password is encrypted with AES-256-GCM before it is stored. Set
+`TENGEN_CONNECTOR_MASTER_KEY` to a base64-encoded random 32-byte key before
+saving a password; losing or changing the key requires entering the password
+again. In production also set `TENGEN_RABBITMQ_ALLOWED_HOSTS` to a comma-separated
+exact host allowlist.
+
+For an isolated local broker, start the optional Compose profile:
+
+```bash
+docker compose --env-file .env \
+  -f tengen/docker-compose.yml \
+  --profile rabbitmq up -d db rabbitmq
+```
+
+The profile exposes AMQP on `5672` and the RabbitMQ management UI on `15672`.
+When the backend runs inside Compose, enter `rabbitmq` as the host; when the
+backend runs directly on the host, enter `localhost`. In the RabbitMQ
+management UI, create the following durable topology before testing:
+
+```text
+tengen.input       --events------> tengen.events
+tengen.dead-letter --dead-letter-> tengen.events.dlq
+```
+
+Use direct exchanges named `tengen.input` and `tengen.dead-letter`, queues named
+`tengen.events` and `tengen.events.dlq`, and the routing keys shown above. The
+local Compose user is suitable for development; use a least-privilege user in
+production. The management API is not required by Tengen.
+
+Publish persistent UTF-8 JSON messages with `content_type=application/json` and
+a unique `message_id`. Malformed or permanently invalid messages are published
+to the configured dead-letter exchange only after publisher confirmation; the
+original delivery is acknowledged afterward. Receipts follow the global
+operational retention period, so publishers must not reuse a message ID within
+that retention horizon.
+
+For a manual smoke test, create an active API key scoped to `payment` and
+`billing`, configure the connector with the values above, then Save draft →
+Test connection → Enable consumption in **Connectors · RabbitMQ**. Publish a
+message with `message_id`, `content_type=application/json`, and this body:
+
+```json
+{"type":"payment","source":"billing","data":{"amount":2500,"country":"PH"}}
+```
+
+The accepted event should appear in **Events** with origin `RabbitMQ` and a
+detail panel showing the queue and message ID. Reusing the same `message_id`
+must not create a second event; malformed messages should appear in the
+configured dead-letter queue.
+
 ### Important development commands
 
 Run the complete stack from Docker without making outbound webhook requests:
@@ -110,13 +184,19 @@ docker compose -f tengen/docker-compose.yml up --build -d
 ```
 
 Run the backend and frontend separately while using the Compose PostgreSQL
-container:
+database and optional RabbitMQ broker:
 
 ```bash
-docker compose -f tengen/docker-compose.yml up -d db
+docker compose --env-file .env \
+  -f tengen/docker-compose.yml \
+  --profile rabbitmq up -d db rabbitmq
+
+set -a
+source .env
+set +a
 
 cd tengen
-WEBHOOK_WORKER_ENABLED=false ./mvnw spring-boot:run
+./mvnw spring-boot:run
 ```
 
 In another terminal:
@@ -183,6 +263,10 @@ volume.
   type. Events within the configured grace period are evaluated normally; events
   at or before the watermark are retained and reported as too late without
   changing rule state or queuing actions.
+- **RabbitMQ ingestion:** the optional RabbitMQ connector consumes the existing
+  event JSON contract with manual acknowledgements, API-key scope checks,
+  durable message receipts, bounded retries, confirmed dead-letter publishing,
+  and RabbitMQ origin metadata in Event Explorer.
 - **Quality gates:** backend Testcontainers integration tests, ESLint, Vitest,
   Playwright smoke tests, and CI checks now cover the main admin and delivery
   workflows.
@@ -292,6 +376,7 @@ rejected.
 flowchart LR
   Admin["Admin browser"] --> Web["Next.js console and proxy"]
   Producer["Event producer"] --> App["Spring Boot API and worker"]
+  Broker["RabbitMQ queue"] --> App
   Web --> App
   App --> DB["PostgreSQL"]
   App --> Callback["Webhook endpoint"]
@@ -299,7 +384,7 @@ flowchart LR
 
 - The Next.js application lives in `frontend/` and sends admin requests through [`/api/proxy/[...path]`](frontend/src/app/api/proxy/[...path]/route.ts). The proxy attaches and refreshes JWT credentials server-side.
 - The Spring Boot service lives in `tengen/` and owns event processing, rule evaluation, persistence, authentication, and webhook delivery.
-- PostgreSQL stores accepted events, rule matches, trigger state, idempotency records, and webhook delivery history.
+- PostgreSQL stores accepted events, rule matches, trigger state, idempotency records, RabbitMQ receipts, and webhook delivery history.
 
 ### API Access
 
@@ -311,6 +396,7 @@ flowchart LR
 | `/api/keys/**` | Admin session | Manage ingestion API keys. |
 | `/api/webhook-deliveries/**` | Admin session | Search delivery history, inspect details, and retry dead-lettered work. |
 | `/api/replay-jobs/**` | Admin session | Create analysis-only replay jobs and read their progress and outcomes. |
+| `/api/connectors/rabbitmq/**` | Admin session | Configure, test, enable, disable, and inspect the RabbitMQ connector. |
 
 Admin access and refresh tokens are stored in httpOnly cookies, so client-side JavaScript does not read them. API keys are stored as hashes and the raw value is available only when a key is created.
 
@@ -337,6 +423,10 @@ The development defaults work with the included Docker Compose database. Expand 
 | `JWT_ISSUER` / `JWT_AUDIENCE` | `tengen` / `tengen-admin` | Required JWT issuer and audience. |
 | `JWT_ACCESS_TTL_MINUTES` / `JWT_REFRESH_TTL_DAYS` | `15` / `7` | Admin access and refresh lifetimes. |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:3000` | Browser origins allowed to access the backend. |
+| `TENGEN_CONNECTOR_MASTER_KEY` | empty | Base64-encoded random 32-byte AES key used to encrypt the RabbitMQ password. Required before saving or starting a configured connector. |
+| `TENGEN_RABBITMQ_ALLOWED_HOSTS` | empty | Comma-separated exact host allowlist; required when the `prod` or `production` profile is active. |
+| `TENGEN_RABBITMQ_CONNECTION_TIMEOUT_MS` / `TENGEN_RABBITMQ_HANDSHAKE_TIMEOUT_MS` | `5000` / `5000` | RabbitMQ connection and AMQP handshake timeouts. |
+| `TENGEN_RABBITMQ_SHUTDOWN_TIMEOUT_MS` / `TENGEN_RABBITMQ_DEAD_LETTER_TIMEOUT_MS` | `5000` / `5000` | RabbitMQ resource shutdown and publisher-confirm timeouts. |
 | `WEBHOOK_WORKER_ENABLED` | `true` | Enable automatic webhook delivery. |
 | `WEBHOOK_WORKER_POLL_INTERVAL_MS` / `WEBHOOK_WORKER_INITIAL_DELAY_MS` | `1000` / `1000` | Worker polling and startup delays. |
 | `WEBHOOK_WORKER_BATCH_SIZE` / `WEBHOOK_WORKER_MAX_ATTEMPTS` | `25` / `8` | Claim batch size and attempts before dead-lettering. |
@@ -381,20 +471,23 @@ Liveness and readiness are exposed at `/actuator/health/liveness` and
 `/actuator/health/readiness`; Prometheus metrics require an authenticated admin
 request at `/actuator/prometheus`.
 
-For Docker Compose, put deployment-specific values in an ignored
-`tengen/.env` file (or use a secret manager in production):
+For local development, put deployment-specific values in an ignored root
+`.env` file. Do not commit it; use a secret manager or deployment-injected
+environment variables in production:
 
 ```dotenv
 SPRING_PROFILES_ACTIVE=prod
 ADMIN_PASSWORD=replace-with-a-strong-password
 JWT_SECRET=replace-with-a-random-secret-at-least-32-characters
 WEBHOOK_SIGNING_SECRET=replace-with-another-random-secret-at-least-32-characters
+TENGEN_CONNECTOR_MASTER_KEY=replace-with-a-base64-encoded-random-32-byte-key
+TENGEN_RABBITMQ_ALLOWED_HOSTS=rabbitmq
 ```
 
 Start Compose with that file explicitly:
 
 ```bash
-docker compose --env-file tengen/.env -f tengen/docker-compose.yml up -d --build
+docker compose --env-file .env -f tengen/docker-compose.yml up -d --build
 ```
 
 ## Run the Full Stack with Docker
@@ -402,32 +495,33 @@ docker compose --env-file tengen/.env -f tengen/docker-compose.yml up -d --build
 Build and start PostgreSQL, Spring Boot, and Next.js together:
 
 ```bash
-docker compose -f tengen/docker-compose.yml up --build -d
+docker compose --env-file .env -f tengen/docker-compose.yml up --build -d
 ```
 
 The services are available on ports `5432`, `8080`, and `3000`, respectively.
+The RabbitMQ service is optional; include `--profile rabbitmq` when the full
+Docker stack should also start the broker.
 
 To rebuild only the frontend:
 
 ```bash
-docker compose -f tengen/docker-compose.yml up -d --build frontend
+docker compose --env-file .env -f tengen/docker-compose.yml up -d --build frontend
 ```
 
 ## Roadmap
 
 The durable webhook outbox, background delivery worker, automatic retries,
-dead-letter handling, delivery-history console, watermarks, and absence patterns
-are implemented.
+dead-letter handling, delivery-history console, watermarks, absence patterns,
+analysis-only replay jobs, and the optional RabbitMQ connector are implemented.
 
-Safe replay/backfill analysis is now implemented. The next planned sequence
-adds UI-configured RabbitMQ ingestion and replay-job controls and history. See
-the [CEP roadmap](plans/cep-roadmap-plan.md) for completed work and ordering.
+The next planned sequence adds replay-job controls and history. See the
+[CEP roadmap](plans/cep-roadmap-plan.md) for completed work and ordering.
 
 Detailed roadmap plans:
 
 - Implemented: [Replay and backfill job MVP](plans/2026-08-04-1244-replay-backfill-job-mvp-plan.md)
-- Next: [RabbitMQ connector with admin UI MVP](plans/2026-08-04-1515-rabbitmq-connector-ui-mvp-plan.md)
-- Then: [Replay job controls and history](plans/2026-08-04-1244-replay-job-controls-history-plan.md)
+- Implemented: [RabbitMQ connector with admin UI MVP](plans/2026-08-04-1515-rabbitmq-connector-ui-mvp-plan.md)
+- Next: [Replay job controls and history](plans/2026-08-04-1244-replay-job-controls-history-plan.md)
 
 Planned but not currently scheduled:
 

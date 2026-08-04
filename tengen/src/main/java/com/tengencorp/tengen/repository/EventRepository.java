@@ -11,6 +11,6 @@ public interface EventRepository extends JpaRepository<Event, Long>,
                                          org.springframework.data.jpa.repository.JpaSpecificationExecutor<Event> {
 
     @Override
-    @EntityGraph(attributePaths = "apiKey")
+    @EntityGraph(attributePaths = {"apiKey", "rabbitMqConnector"})
     Page<Event> findAll(Specification<Event> specification, Pageable pageable);
 }

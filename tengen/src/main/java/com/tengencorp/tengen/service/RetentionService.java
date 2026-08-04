@@ -59,6 +59,12 @@ public class RetentionService {
                 WHERE status = 'COMPLETED' AND completed_at < ? LIMIT ?
             )
             """, cutoff));
+        deleted.put("rabbitmq_message_receipts", drain("""
+            DELETE FROM rabbitmq_message_receipts WHERE id IN (
+                SELECT id FROM rabbitmq_message_receipts
+                WHERE processed_at < ? LIMIT ?
+            )
+            """, cutoff));
         deleted.put("webhook_outbox", drain("""
             DELETE FROM webhook_outbox WHERE id IN (
                 SELECT id FROM webhook_outbox

@@ -22,7 +22,11 @@ import com.tengencorp.tengen.entity.EventIdempotency;
 import com.tengencorp.tengen.entity.EventIdempotencyStatus;
 import com.tengencorp.tengen.entity.ResponseMode;
 import com.tengencorp.tengen.entity.EventTimeStatus;
+import com.tengencorp.tengen.entity.IngestionOrigin;
+import com.tengencorp.tengen.entity.RabbitMqConnector;
 import com.tengencorp.tengen.exception.IdempotencyConflictException;
+import com.tengencorp.tengen.exception.RabbitMqConnectorException;
+import com.tengencorp.tengen.exception.RabbitMqPermanentMessageException;
 import com.tengencorp.tengen.helper.EventRequestHasher;
 import com.tengencorp.tengen.repository.EventIdempotencyRepository;
 import com.tengencorp.tengen.repository.EventRuleOutcomeRepository;
@@ -190,12 +194,56 @@ public class EventService {
         return ingestionResult;
     }
 
+    /**
+     * Processes a validated broker message without HTTP idempotency or response
+     * projection. Receipt reservation is owned by the RabbitMQ delivery service.
+     */
+    @Transactional
+    public EventIngestionResult processRabbitMq(EventRequest request, Long apiKeyId,
+                                                RabbitMqConnector connector) {
+        if (apiKeyId == null) {
+            throw new RabbitMqConnectorException("API_KEY_INVALID", "The connector API key is invalid");
+        }
+        if (request.timestamp() != null
+                && request.timestamp().isAfter(Instant.now().plusSeconds(maxFutureSkewSeconds))) {
+            throw new RabbitMqPermanentMessageException("FUTURE_TIMESTAMP",
+                "The event timestamp is too far in the future");
+        }
+
+        ApiKey apiKey = apiKeyRepository.findById(apiKeyId)
+            .orElseThrow(() -> new RabbitMqConnectorException(
+                "API_KEY_INVALID", "The connector API key is invalid"));
+        if (!apiKey.isActive()
+                || (apiKey.getExpiresAt() != null && !apiKey.getExpiresAt().isAfter(Instant.now()))) {
+            throw new RabbitMqConnectorException("API_KEY_REVOKED",
+                "The connector API key is inactive or expired");
+        }
+
+        Event authorizationEvent = new Event(request.type(), request.source(),
+            request.timestamp() != null ? request.timestamp() : Instant.now(), request.data(), apiKey);
+        if (!apiKeyService.isValid(apiKey, authorizationEvent)) {
+            throw new RabbitMqPermanentMessageException("API_KEY_SCOPE_REJECTED",
+                "The event is outside the connector API key scope");
+        }
+
+        ProcessingResult result = processEvent(request, apiKey, IngestionOrigin.RABBITMQ, connector);
+        return new EventIngestionResult(result.response(), false, result.response(), result.event());
+    }
+
     private ProcessingResult processEvent(EventRequest request, ApiKey apiKey) {
+        return processEvent(request, apiKey, IngestionOrigin.HTTP, null);
+    }
+
+    private ProcessingResult processEvent(EventRequest request, ApiKey apiKey,
+                                          IngestionOrigin origin,
+                                          RabbitMqConnector connector) {
         Instant occurredAt = request.timestamp() != null ? request.timestamp() : Instant.now();
         EventTimeDecision eventTimeDecision = eventWatermarkService.classify(
             request.type(), request.source(), occurredAt);
         Event event = new Event(request.type(), request.source(), occurredAt, request.data(),
             apiKey);
+        event.setIngestionOrigin(origin);
+        event.setRabbitMqConnector(connector);
         event.setEventTimeStatus(eventTimeDecision.status());
         event.setWatermarkAtDecision(eventTimeDecision.watermarkAtDecision());
         event = eventRepository.save(event);

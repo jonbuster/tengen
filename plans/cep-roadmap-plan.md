@@ -296,10 +296,31 @@ Implemented on 2026-08-04 as an isolated historical-analysis slice:
 
 Plan: [`2026-08-04-1244-replay-backfill-job-mvp-plan.md`](2026-08-04-1244-replay-backfill-job-mvp-plan.md)
 
+## Implemented: RabbitMQ Connector with Admin UI MVP
+
+Implemented on 2026-08-04 as the optional broker-ingestion slice:
+
+- Added one UI-managed RabbitMQ connector with save, connection test, enable,
+  disable, runtime-state, and safe-error workflows.
+- Added AES-256-GCM password encryption backed by the deployment-supplied
+  `TENGEN_CONNECTOR_MASTER_KEY`; passwords remain write-only in the API and UI.
+- Added manual-ack consumption with prefetch `1`, one listener consumer,
+  selected API-key authorization, bounded retries, confirmed dead-letter
+  publishing, and pause-on-connector failure behavior.
+- Added durable `(connector_id, queue_name, message_id)` receipts so committed
+  events are not processed twice after broker redelivery.
+- Added RabbitMQ ingestion origin and safe queue/exchange/routing/message
+  metadata to Event Explorer, including an origin filter and RabbitMQ chips.
+- Added Flyway `V11__rabbitmq_connector.sql`, optional Compose profile support,
+  operational metrics, protected health reporting, and deployment guidance.
+- Verified with the backend test suite, frontend lint/tests/build, Compose
+  configuration validation, and whitespace checks.
+
+Plan: [`2026-08-04-1515-rabbitmq-connector-ui-mvp-plan.md`](2026-08-04-1515-rabbitmq-connector-ui-mvp-plan.md)
+
 ## Next Planned Sequence
 
-1. [RabbitMQ connector with admin UI MVP](2026-08-04-1515-rabbitmq-connector-ui-mvp-plan.md) - add UI-configured RabbitMQ ingestion with durable message deduplication and commit-after-database semantics.
-2. [Replay job controls and history](2026-08-04-1244-replay-job-controls-history-plan.md) — add pause, resume, cancellation, retry, searchable history, and transition auditing.
+1. [Replay job controls and history](2026-08-04-1244-replay-job-controls-history-plan.md) — add pause, resume, cancellation, retry, searchable history, and transition auditing.
 
 ## Planned but Unscheduled
 
@@ -311,5 +332,5 @@ Plan: [`2026-08-04-1244-replay-backfill-job-mvp-plan.md`](2026-08-04-1244-replay
 2. Absence patterns — implemented with durable grouped expectations, event-time deadlines, idle-route watermark advancement, webhook integration, and Event Explorer visibility.
 3. Watermarks and allowed lateness — implemented: durable source/type watermarks, a configurable five-minute grace period, late-event classification, too-late side-effect suppression, and absence-route idle advancement are available; correction and retraction remain future work.
 4. Replay/backfill — implemented for isolated `CONDITION` and `AGGREGATE` analysis with immutable inputs and no live actions; sequence, absence, and action-enabled replay remain future work.
-5. Broker connectors — RabbitMQ ingestion with the admin UI is the next planned slice; production ingestion currently uses the HTTP event API.
+5. Broker connectors — RabbitMQ ingestion with the admin UI is implemented for one backend-managed queue; multiple connectors, additional broker types, and multi-replica ownership remain future work.
 6. Event API response controls — implemented: new API keys default to compact producer responses, full responses remain available by choice, and successful responses expose an explicit `X-Idempotency-Replayed` header.

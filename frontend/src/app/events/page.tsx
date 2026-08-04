@@ -25,7 +25,7 @@ import { api, errorMessage } from "@/lib/api";
 import { ClientDataGrid } from "@/components/ClientDataGrid";
 import { formatTimestamp } from "@/lib/formatters";
 import { usePreferences } from "@/lib/preferences";
-import { EventHistoryPage, EventHistorySummary, EventTimeStatus } from "@/lib/types";
+import { EventHistoryPage, EventHistorySummary, EventTimeStatus, IngestionOrigin } from "@/lib/types";
 
 type Filters = {
   eventId: string;
@@ -35,6 +35,7 @@ type Filters = {
   matched: string;
   traceAvailable: string;
   eventTimeStatus: string;
+  ingestionOrigin: string;
   from: string;
   to: string;
 };
@@ -47,6 +48,7 @@ const INITIAL_FILTERS: Filters = {
   matched: "",
   traceAvailable: "",
   eventTimeStatus: "",
+  ingestionOrigin: "",
   from: "",
   to: "",
 };
@@ -75,6 +77,7 @@ export default function EventsPage() {
       addParam(params, "matched", filters.matched);
       addParam(params, "traceAvailable", filters.traceAvailable);
       addParam(params, "eventTimeStatus", filters.eventTimeStatus);
+      addParam(params, "ingestionOrigin", filters.ingestionOrigin);
       addParam(params, "from", toIso(filters.from));
       addParam(params, "to", toIso(filters.to));
       return (await api.get(`/event-history?${params.toString()}`)).data;
@@ -92,6 +95,12 @@ export default function EventsPage() {
       { field: "id", headerName: "Event", width: 90 },
       { field: "type", headerName: "Type", minWidth: 180, flex: 1 },
       { field: "source", headerName: "Source", minWidth: 150, flex: 1 },
+      {
+        field: "ingestionOrigin",
+        headerName: "Origin",
+        width: 125,
+        renderCell: (params) => <OriginChip origin={params.value as IngestionOrigin | null | undefined} />,
+      },
       {
         field: "outcome",
         headerName: "Outcome",
@@ -198,6 +207,14 @@ export default function EventsPage() {
                 <MenuItem value="TOO_LATE">Too late</MenuItem>
               </Select>
             </FormControl>
+            <FormControl size="small" sx={{ minWidth: 145 }}>
+              <InputLabel>Origin</InputLabel>
+              <Select label="Origin" value={filters.ingestionOrigin} onChange={(event) => setFilter("ingestionOrigin", event.target.value)}>
+                <MenuItem value="">All origins</MenuItem>
+                <MenuItem value="HTTP">HTTP</MenuItem>
+                <MenuItem value="RABBITMQ">RabbitMQ</MenuItem>
+              </Select>
+            </FormControl>
           </Stack>
 
           <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} sx={{ mb: 2 }}>
@@ -269,6 +286,11 @@ function EventTimeStatusChip({ status }: { status: EventTimeStatus | null }) {
     TOO_LATE: "error",
   };
   return <Chip label={labels[status]} color={colors[status]} size="small" />;
+}
+
+function OriginChip({ origin }: { origin: IngestionOrigin | null | undefined }) {
+  if (origin === "RABBITMQ") return <Chip label="RabbitMQ" color="info" size="small" />;
+  return <Chip label="HTTP" size="small" variant="outlined" />;
 }
 
 function toIso(value: string) {

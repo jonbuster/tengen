@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -35,6 +36,19 @@ public class ApiExceptionHandler {
     @ExceptionHandler(ConflictException.class)
     public ResponseEntity<ErrorResponse> conflict(ConflictException e, HttpServletRequest request) {
         return error(HttpStatus.CONFLICT, e.getMessage(), request);
+    }
+
+    @ExceptionHandler(RabbitMqConnectorException.class)
+    public ResponseEntity<ErrorResponse> rabbitMqConnector(RabbitMqConnectorException e,
+                                                            HttpServletRequest request) {
+        return error(HttpStatus.BAD_REQUEST, e.getMessage(), request);
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponse> optimisticLock(ObjectOptimisticLockingFailureException e,
+                                                        HttpServletRequest request) {
+        return error(HttpStatus.CONFLICT,
+            "The resource changed in another session; reload and try again", request);
     }
 
     @ExceptionHandler({IllegalArgumentException.class, MethodArgumentTypeMismatchException.class})

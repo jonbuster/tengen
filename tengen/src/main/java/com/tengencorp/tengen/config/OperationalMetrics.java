@@ -2,6 +2,7 @@ package com.tengencorp.tengen.config;
 
 import com.tengencorp.tengen.entity.WebhookOutboxStatus;
 import com.tengencorp.tengen.repository.WebhookOutboxRepository;
+import com.tengencorp.tengen.service.RabbitMqRuntimeManager;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Component;
@@ -19,7 +20,8 @@ public class OperationalMetrics {
         WebhookOutboxStatus.PROCESSING,
         WebhookOutboxStatus.RETRY_SCHEDULED);
 
-    public OperationalMetrics(MeterRegistry registry, WebhookOutboxRepository repository) {
+    public OperationalMetrics(MeterRegistry registry, WebhookOutboxRepository repository,
+                              RabbitMqRuntimeManager rabbitMqRuntimeManager) {
         Gauge.builder("tengen.webhook.queue.depth", repository,
                 value -> value.countByStatusIn(ACTIVE))
             .description("Active webhook deliveries")
@@ -29,6 +31,10 @@ public class OperationalMetrics {
                     .map(row -> Math.max(0, Duration.between(row.getCreatedAt(), Instant.now()).toSeconds()))
                     .orElse(0L))
             .description("Age of the oldest active webhook delivery")
+            .register(registry);
+        Gauge.builder("tengen.rabbitmq.listener.running", rabbitMqRuntimeManager,
+                manager -> manager.isRunning() ? 1 : 0)
+            .description("Whether the UI-managed RabbitMQ listener is running")
             .register(registry);
     }
 }

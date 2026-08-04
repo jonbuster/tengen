@@ -44,9 +44,11 @@ public class SecurityConfig {
                 // Admin APIs use JWT; event ingestion is API-key-only.
                 .requestMatchers("/api/auth/login", "/api/auth/refresh", "/api/auth/logout").permitAll()
                 .requestMatchers("/actuator/health/liveness", "/actuator/health/readiness").permitAll()
+                .requestMatchers("/actuator/health", "/actuator/health/**").authenticated()
                 .requestMatchers("/actuator/prometheus").authenticated()
                 .requestMatchers("/api/rules/**", "/api/keys/**", "/api/webhook-deliveries/**",
-                    "/api/event-history/**", "/api/replay-jobs/**", "/api/settings").authenticated()
+                    "/api/event-history/**", "/api/replay-jobs/**", "/api/settings",
+                    "/api/connectors/rabbitmq/**").authenticated()
                 .requestMatchers("/api/events").authenticated()
                 .anyRequest().denyAll())
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)

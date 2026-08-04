@@ -6,6 +6,14 @@ export type RuleValidationStatus = "VALID" | "INVALID";
 export type ResponseMode = "FULL" | "COMPACT";
 export type EventTimeStatus = "ON_TIME" | "LATE_ACCEPTED" | "TOO_LATE";
 export type AbsenceInstanceStatus = "PENDING" | "SATISFIED" | "TRIGGERED" | "CANCELLED";
+export type IngestionOrigin = "HTTP" | "RABBITMQ";
+export type RabbitMqRuntimeState =
+  | "DISABLED"
+  | "TESTING"
+  | "CONNECTING"
+  | "RUNNING"
+  | "PAUSED"
+  | "ERROR";
 
 export interface SequenceStep {
   position: number;
@@ -350,6 +358,9 @@ export interface EventHistorySummary {
   suppressedActionCount: number | null;
   eventTimeStatus: EventTimeStatus | null;
   watermarkAtDecision: string | null;
+  ingestionOrigin?: IngestionOrigin | null;
+  connectorId?: number | null;
+  connectorName?: string | null;
 }
 
 export interface EventRuleOutcomeResponse {
@@ -381,6 +392,80 @@ export interface EventHistoryDetail {
   rules: EventRuleOutcomeResponse[];
   deliveries: WebhookDeliverySummary[];
   absenceInstances: AbsenceInstanceResponse[];
+  rabbitMqMetadata?: RabbitMqBrokerMetadata | null;
+}
+
+export interface RabbitMqBrokerMetadata {
+  connectorId: number | null;
+  connectorKey: string | null;
+  connectorName: string | null;
+  queueName: string;
+  sourceExchange: string | null;
+  routingKey: string | null;
+  messageId: string;
+  processedAt: string;
+}
+
+export interface RabbitMqConnector {
+  configured: boolean;
+  id: number | null;
+  connectorKey: string;
+  displayName: string;
+  host: string;
+  port: number;
+  virtualHost: string;
+  tlsEnabled: boolean;
+  username: string;
+  passwordConfigured: boolean;
+  queueName: string;
+  deadLetterExchange: string;
+  deadLetterRoutingKey: string;
+  apiKeyId: number | null;
+  apiKeyName: string | null;
+  apiKeyActive: boolean;
+  apiKeyExpiresAt: string | null;
+  maxBodyBytes: number;
+  retryAttempts: number;
+  retryInitialDelayMs: number;
+  retryMultiplier: number;
+  retryMaxDelayMs: number;
+  enabled: boolean;
+  configurationVersion: number;
+  lastTestedVersion: number | null;
+  lastTestedAt: string | null;
+  lastTestSucceeded: boolean | null;
+  lastTestErrorCategory: string | null;
+  runtimeState: RabbitMqRuntimeState;
+  errorCategory: string | null;
+  lastTransitionAt: string | null;
+}
+
+export interface RabbitMqConnectorRequest {
+  displayName: string;
+  host: string;
+  port: number;
+  virtualHost: string;
+  tlsEnabled: boolean;
+  username: string;
+  password?: string;
+  queueName: string;
+  deadLetterExchange: string;
+  deadLetterRoutingKey: string;
+  apiKeyId: number;
+  maxBodyBytes: number;
+  retryAttempts: number;
+  retryInitialDelayMs: number;
+  retryMultiplier: number;
+  retryMaxDelayMs: number;
+  configurationVersion: number;
+}
+
+export interface RabbitMqConnectionTestResult {
+  successful: boolean;
+  category: string;
+  message: string;
+  testedAt: string;
+  configurationVersion: number;
 }
 
 export interface AbsenceInstanceResponse {

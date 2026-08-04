@@ -31,6 +31,7 @@ import {
   EventRuleActionOutcome,
   EventTimeStatus,
   WebhookDeliveryStatus,
+  IngestionOrigin,
 } from "@/lib/types";
 
 export default function EventDetailPage() {
@@ -77,6 +78,7 @@ export default function EventDetailPage() {
           <Typography variant="body2" color="text.secondary">
             {summary.type} from {summary.source} · received {formatTimestamp(summary.receivedAt, preferences.timeDisplay)}
           </Typography>
+          <Box sx={{ mt: 1 }}><OriginChip origin={summary.ingestionOrigin} /></Box>
         </Box>
         {detail.deliveries.length > 0 && (
           <Button component={Link} href={`/deliveries?eventId=${summary.id}`} variant="outlined" startIcon={<DeliveryIcon />}>
@@ -116,6 +118,19 @@ export default function EventDetailPage() {
             {JSON.stringify(payload, null, 2)}
           </Box>
         </Paper>
+
+        {detail.rabbitMqMetadata && (
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>RabbitMQ delivery metadata</Typography>
+            <Stack spacing={0.5}>
+              <Typography variant="body2">Connector: {detail.rabbitMqMetadata.connectorName ?? detail.rabbitMqMetadata.connectorKey ?? "Unknown"}</Typography>
+              <Typography variant="body2">Queue: {detail.rabbitMqMetadata.queueName}</Typography>
+              <Typography variant="body2">Message ID: <Box component="code">{detail.rabbitMqMetadata.messageId}</Box></Typography>
+              <Typography variant="body2">Exchange: {detail.rabbitMqMetadata.sourceExchange ?? "Default exchange"}</Typography>
+              <Typography variant="body2">Routing key: {detail.rabbitMqMetadata.routingKey ?? "—"}</Typography>
+            </Stack>
+          </Paper>
+        )}
 
         {absenceInstances.length > 0 && (
           <Paper variant="outlined" sx={{ p: 2 }}>
@@ -272,6 +287,11 @@ function EventTimeStatusChip({ status }: { status: EventTimeStatus | null }) {
     TOO_LATE: "error",
   };
   return <Chip label={labels[status]} color={colors[status]} size="small" />;
+}
+
+function OriginChip({ origin }: { origin: IngestionOrigin | null | undefined }) {
+  if (origin === "RABBITMQ") return <Chip label="RabbitMQ" color="info" size="small" />;
+  return <Chip label="HTTP" size="small" variant="outlined" />;
 }
 
 function formatReason(reason: string) {

@@ -3,6 +3,7 @@ package com.tengencorp.tengen.controller;
 import com.tengencorp.tengen.dto.EventHistoryDetail;
 import com.tengencorp.tengen.dto.EventHistoryPage;
 import com.tengencorp.tengen.entity.EventTimeStatus;
+import com.tengencorp.tengen.entity.IngestionOrigin;
 import com.tengencorp.tengen.service.EventHistoryAdminService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -34,11 +35,13 @@ public class EventHistoryAdminController {
             @RequestParam(required = false) Boolean matched,
             @RequestParam(required = false) Boolean traceAvailable,
             @RequestParam(required = false) EventTimeStatus eventTimeStatus,
+            @RequestParam(required = false) IngestionOrigin ingestionOrigin,
+            @RequestParam(required = false) IngestionOrigin origin,
             @RequestParam(required = false) Instant from,
             @RequestParam(required = false) Instant to) {
         return eventHistoryAdminService.list(
             page, size, eventId, type, source, apiKeyId, matched, traceAvailable,
-            eventTimeStatus, from, to);
+            eventTimeStatus, ingestionOrigin != null ? ingestionOrigin : origin, from, to);
     }
 
     @GetMapping("/{id}")
