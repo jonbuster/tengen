@@ -6,6 +6,12 @@
 
 Tengen is a complex event processing web app for ingesting business events, evaluating configurable rules, and triggering automated webhook actions.
 
+- **Payment fraud detection** — Flag unusually large payments or repeated payment failures and notify a fraud service.
+- **Login security monitoring** — Detect multiple failed login attempts for the same user, account, or device within a time window.
+- **Order workflow tracking** — Confirm that events such as order placement, payment, and fulfillment happen in the expected sequence.
+- **Missing-event detection** — Identify when an expected event, such as a payment confirmation or delivery update, does not arrive before a deadline.
+- **Operational alerts** — Monitor business activity and send webhook notifications when important thresholds or patterns are reached.
+
 ## Quick Start
 
 Requirements: Docker, Java 21, Node.js, and npm.
