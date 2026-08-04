@@ -1,6 +1,6 @@
 # Replay and Backfill Job MVP Plan
 
-## Status: Planned - 2026-08-04 12:44 PHT
+## Status: Implemented — 2026-08-04
 
 ## Recommendation
 

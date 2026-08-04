@@ -284,16 +284,32 @@ Implemented and manually verified on 2026-08-04 as the negative-pattern slice:
 
 Plan: [`2026-08-04-1123-absence-patterns-plan.md`](2026-08-04-1123-absence-patterns-plan.md)
 
+## Implemented: Replay and Backfill Job MVP
+
+Implemented on 2026-08-04 as an isolated historical-analysis slice:
+
+- Admins can run bounded, analysis-only jobs against an immutable `CONDITION` or `AGGREGATE` rule revision.
+- Replay inputs are materialized and processed deterministically without changing original events, live rule state, watermarks, traces, or webhook deliveries.
+- Job-local aggregate state, atomic checkpoints, leases, and unique outcomes make worker restart recovery safe.
+- JWT-protected APIs and the Replays page expose job progress and paginated outcomes.
+- Replay action mode is fixed to `NO_ACTIONS`; sequence and absence revisions remain unsupported in this slice.
+
+Plan: [`2026-08-04-1244-replay-backfill-job-mvp-plan.md`](2026-08-04-1244-replay-backfill-job-mvp-plan.md)
+
 ## Next Planned Sequence
 
-1. [Replay and backfill job MVP](2026-08-04-1244-replay-backfill-job-mvp-plan.md) — safely evaluate stored events against one immutable rule revision with isolated state and no live actions.
-2. [Kafka connector MVP](2026-08-04-1244-kafka-connector-mvp-plan.md) — add optional broker ingestion with durable message deduplication and commit-after-database semantics.
-3. [Replay job controls and history](2026-08-04-1244-replay-job-controls-history-plan.md) — add pause, resume, cancellation, retry, searchable history, and transition auditing.
+1. [Kafka connector MVP](2026-08-04-1244-kafka-connector-mvp-plan.md) — add optional broker ingestion with durable message deduplication and commit-after-database semantics.
+2. [Replay job controls and history](2026-08-04-1244-replay-job-controls-history-plan.md) — add pause, resume, cancellation, retry, searchable history, and transition auditing.
+
+## Planned but Unscheduled
+
+- [Spring Boot failure and audit logging](2026-08-04-1025-spring-boot-logging-plan.md) — operational logging hardening that is not currently part of the ordered CEP feature sequence.
 
 ## Later Assessment Roadmap
 
 1. Rule lifecycle/versioning and audit history — implemented with revision-scoped aggregate/trigger state, immutable snapshots, archive/unarchive, restore, and stale-write protection.
 2. Absence patterns — implemented with durable grouped expectations, event-time deadlines, idle-route watermark advancement, webhook integration, and Event Explorer visibility.
 3. Watermarks and allowed lateness — implemented: durable source/type watermarks, a configurable five-minute grace period, late-event classification, too-late side-effect suppression, and absence-route idle advancement are available; correction and retraction remain future work.
-4. Broker connectors and replay/backfill — planned in the three slices above; ingestion currently uses the HTTP event API, and idempotency response replay is not historical event re-evaluation.
-5. Event API response controls — implemented: new API keys default to compact producer responses, full responses remain available by choice, and successful responses expose an explicit `X-Idempotency-Replayed` header.
+4. Replay/backfill — implemented for isolated `CONDITION` and `AGGREGATE` analysis with immutable inputs and no live actions; sequence, absence, and action-enabled replay remain future work.
+5. Broker connectors — Kafka ingestion is the next planned slice; production ingestion currently uses the HTTP event API.
+6. Event API response controls — implemented: new API keys default to compact producer responses, full responses remain available by choice, and successful responses expose an explicit `X-Idempotency-Replayed` header.

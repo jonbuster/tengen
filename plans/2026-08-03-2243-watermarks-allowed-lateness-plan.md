@@ -1,5 +1,7 @@
 # Watermarks and Allowed Lateness Plan
 
+## Status: Implemented — 2026-08-03
+
 ## Summary
 
 - Before changing application code, create `plans/2026-08-03-2243-watermarks-allowed-lateness-plan.md` containing this plan.

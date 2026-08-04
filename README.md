@@ -423,11 +423,15 @@ Safe replay/backfill analysis is now implemented. The next planned sequence
 adds optional Kafka ingestion and replay-job controls and history. See the
 [CEP roadmap](plans/cep-roadmap-plan.md) for completed work and ordering.
 
-Detailed next-feature plans:
+Detailed roadmap plans:
 
-- [Replay and backfill job MVP](plans/2026-08-04-1244-replay-backfill-job-mvp-plan.md)
-- [Kafka connector MVP](plans/2026-08-04-1244-kafka-connector-mvp-plan.md)
-- [Replay job controls and history](plans/2026-08-04-1244-replay-job-controls-history-plan.md)
+- Implemented: [Replay and backfill job MVP](plans/2026-08-04-1244-replay-backfill-job-mvp-plan.md)
+- Next: [Kafka connector MVP](plans/2026-08-04-1244-kafka-connector-mvp-plan.md)
+- Then: [Replay job controls and history](plans/2026-08-04-1244-replay-job-controls-history-plan.md)
+
+Planned but not currently scheduled:
+
+- [Spring Boot failure and audit logging](plans/2026-08-04-1025-spring-boot-logging-plan.md)
 
 Detailed webhook implementation plans:
 

@@ -1,5 +1,7 @@
 # Spring Boot Failure and Audit Logging
 
+## Status: Planned — not currently scheduled in the CEP roadmap as of 2026-08-04
+
 ## Summary
 
 Extend the existing SLF4J logging with searchable `key=value` events, request correlation, security auditing, and better failure context. Keep event payloads, credentials, tokens, expressions, and callback URLs out of logs.
