@@ -28,6 +28,7 @@ import { usePreferences } from "@/lib/preferences";
 import {
   EventHistoryDetail,
   EventRuleActionOutcome,
+  EventTimeStatus,
   WebhookDeliveryStatus,
 } from "@/lib/types";
 
@@ -88,7 +89,25 @@ export default function EventDetailPage() {
         </Alert>
       )}
 
+      {summary.eventTimeStatus === "TOO_LATE" && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          This event was retained, but its event-time window had already closed, so no rules or actions were evaluated.
+          {summary.watermarkAtDecision && ` Watermark at decision: ${formatTimestamp(summary.watermarkAtDecision, preferences.timeDisplay)}.`}
+        </Alert>
+      )}
+
       <Stack spacing={2}>
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          <Typography variant="subtitle1" sx={{ mb: 1 }}>Event-time handling</Typography>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "flex-start", sm: "center" }}>
+            <EventTimeStatusChip status={summary.eventTimeStatus} />
+            <Typography variant="body2" color="text.secondary">
+              Watermark at decision: {summary.watermarkAtDecision
+                ? formatTimestamp(summary.watermarkAtDecision, preferences.timeDisplay)
+                : "Not available"}
+            </Typography>
+          </Stack>
+        </Paper>
         <Paper variant="outlined" sx={{ p: 2 }}>
           <Typography variant="subtitle1" sx={{ mb: 1 }}>Event payload</Typography>
           <Box component="pre" sx={{ m: 0, p: 2, bgcolor: "action.hover", borderRadius: 1, overflow: "auto", maxHeight: 360, fontSize: 13 }}>
@@ -191,6 +210,21 @@ function OutcomeDetails({ rule }: { rule: EventHistoryDetail["rules"][number] })
 function DeliveryStatusChip({ status }: { status: WebhookDeliveryStatus }) {
   const color = status === "DELIVERED" ? "success" : status === "DEAD_LETTER" ? "error" : status === "PROCESSING" ? "info" : "warning";
   return <Chip label={status.replaceAll("_", " ")} color={color} size="small" />;
+}
+
+function EventTimeStatusChip({ status }: { status: EventTimeStatus | null }) {
+  if (!status) return <Chip label="Unknown" size="small" variant="outlined" />;
+  const labels: Record<EventTimeStatus, string> = {
+    ON_TIME: "On time",
+    LATE_ACCEPTED: "Late accepted",
+    TOO_LATE: "Too late",
+  };
+  const colors: Record<EventTimeStatus, "success" | "warning" | "error"> = {
+    ON_TIME: "success",
+    LATE_ACCEPTED: "warning",
+    TOO_LATE: "error",
+  };
+  return <Chip label={labels[status]} color={colors[status]} size="small" />;
 }
 
 function formatReason(reason: string) {

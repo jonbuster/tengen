@@ -142,4 +142,37 @@ describe("Event Explorer detail", () => {
     expect(screen.getByText("No trace records are available.")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "View deliveries" })).not.toBeInTheDocument();
   });
+
+  it("explains when an event was retained after its watermark closed", async () => {
+    getMock.mockResolvedValue({
+      data: {
+        event: {
+          id: 42,
+          type: "payment",
+          source: "billing",
+          occurredAt: "2026-08-03T10:04:00Z",
+          receivedAt: "2026-08-03T10:10:01Z",
+          apiKeyId: 3,
+          apiKeyName: "billing-key",
+          apiKeyPrefix: "tg_abc",
+          traceAvailable: true,
+          matchedRuleCount: 0,
+          queuedActionCount: 0,
+          suppressedActionCount: 0,
+          eventTimeStatus: "TOO_LATE",
+          watermarkAtDecision: "2026-08-03T10:05:00Z",
+        },
+        data: { paymentId: "p-2", amount: 1250 },
+        rules: [],
+        deliveries: [],
+      },
+    } as never);
+
+    renderPage();
+
+    expect(await screen.findByText(/retained, but its event-time window had already closed/i)).toBeInTheDocument();
+    expect(screen.getByText("Too late")).toBeInTheDocument();
+    expect(screen.getAllByText(/Watermark at decision:/)).not.toHaveLength(0);
+    expect(screen.getByText("No rules matched this event.")).toBeInTheDocument();
+  });
 });

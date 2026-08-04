@@ -244,7 +244,7 @@ Implemented as the next CEP pattern slice:
 - Completed sequence responses and webhook payloads include ordered step event details.
 - The admin console supports adding, removing, reordering, and testing sequence steps without persisting test events.
 
-The implementation intentionally leaves absence detection, watermarks, reusable events, and branching patterns for later slices.
+The implementation intentionally leaves absence detection, idle-stream advancement, reusable events, and branching patterns for later slices.
 
 ## Implemented: Event Explorer
 
@@ -256,10 +256,21 @@ Implemented as the next production-usability slice:
 - Delivery history links back to its source event, and event details link to filtered delivery history.
 - Events written before trace capture remain visible and are explicitly marked as trace unavailable; no historical outcomes are inferred.
 
+## Implemented: Watermarks and Allowed Lateness
+
+Implemented on 2026-08-03 as the event-time closure slice:
+
+- Durable watermarks are maintained independently for each event source and type.
+- The global `INGESTION_ALLOWED_LATENESS_SECONDS` setting defaults to five minutes.
+- Events are classified as `ON_TIME`, `LATE_ACCEPTED`, or `TOO_LATE` before rule evaluation.
+- Too-late events remain visible in Event Explorer but do not mutate rule state or queue webhook actions.
+- Producer responses and idempotent replays expose the event-time classification additively.
+- Idle-stream advancement, buffering, correction, retraction, and retroactive sequence reordering remain future work.
+
 ## Later Assessment Roadmap
 
 1. Rule lifecycle/versioning and audit history — implemented with revision-scoped aggregate/trigger state, immutable snapshots, archive/unarchive, restore, and stale-write protection.
 2. Absence patterns — not implemented; negative conditions and absence timers remain future work.
-3. Watermarks and allowed lateness — partially implemented: event-time windows and future-event exclusion are implemented, but watermark state, grace periods, and late-event correction/retraction are not.
+3. Watermarks and allowed lateness — implemented: durable source/type watermarks, a configurable five-minute grace period, late-event classification, and too-late side-effect suppression are available; idle-stream advancement and late-event correction/retraction remain future work.
 4. Broker connectors and replay/backfill — not implemented; ingestion currently uses the HTTP event API and idempotency replay is not historical backfill.
 5. Event API response controls — implemented: new API keys default to compact producer responses, full responses remain available by choice, and successful responses expose an explicit `X-Idempotency-Replayed` header.

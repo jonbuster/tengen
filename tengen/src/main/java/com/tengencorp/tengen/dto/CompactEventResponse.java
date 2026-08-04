@@ -1,5 +1,7 @@
 package com.tengencorp.tengen.dto;
 
+import com.tengencorp.tengen.entity.EventTimeStatus;
+
 import java.util.List;
 
 /**
@@ -11,7 +13,8 @@ public record CompactEventResponse(
         boolean matched,
         List<String> rules,
         List<String> queuedRules,
-        List<String> suppressedRules) {
+        List<String> suppressedRules,
+        EventTimeStatus eventTimeStatus) {
 
     public CompactEventResponse {
         rules = rules != null ? List.copyOf(rules) : List.of();
@@ -25,6 +28,7 @@ public record CompactEventResponse(
             response.matched(),
             response.rules(),
             response.queuedRules(),
-            response.suppressedRules());
+            response.suppressedRules(),
+            response.eventTimeStatus());
     }
 }

@@ -1,6 +1,7 @@
 package com.tengencorp.tengen.dto;
 
 import com.tengencorp.tengen.entity.Event;
+import com.tengencorp.tengen.entity.EventTimeStatus;
 
 import java.time.Instant;
 
@@ -17,7 +18,9 @@ public record EventHistorySummary(
         boolean traceAvailable,
         Integer matchedRuleCount,
         Integer queuedActionCount,
-        Integer suppressedActionCount) {
+        Integer suppressedActionCount,
+        EventTimeStatus eventTimeStatus,
+        Instant watermarkAtDecision) {
 
     public static EventHistorySummary from(Event event) {
         boolean traceAvailable = event.getProcessingTraceVersion() != null;
@@ -34,6 +37,8 @@ public record EventHistorySummary(
             traceAvailable,
             traceAvailable ? event.getMatchedRuleCount() : null,
             traceAvailable ? event.getQueuedActionCount() : null,
-            traceAvailable ? event.getSuppressedActionCount() : null);
+            traceAvailable ? event.getSuppressedActionCount() : null,
+            event.getEventTimeStatus(),
+            event.getWatermarkAtDecision());
     }
 }

@@ -4,6 +4,7 @@ export type AggregateType = "COUNT" | "SUM" | "AVG" | "MIN" | "MAX";
 export type TriggerMode = "EVERY_MATCH" | "EDGE" | "ONCE_PER_WINDOW";
 export type RuleValidationStatus = "VALID" | "INVALID";
 export type ResponseMode = "FULL" | "COMPACT";
+export type EventTimeStatus = "ON_TIME" | "LATE_ACCEPTED" | "TOO_LATE";
 
 export interface SequenceStep {
   position: number;
@@ -188,6 +189,7 @@ export interface EventResponse {
   aggregates: Record<string, AggregateResult>;
   sequences: Record<string, SequenceResult>;
   suppressedRules: string[];
+  eventTimeStatus?: EventTimeStatus;
 }
 
 export type WebhookDeliveryStatus =
@@ -249,6 +251,8 @@ export interface EventHistorySummary {
   matchedRuleCount: number | null;
   queuedActionCount: number | null;
   suppressedActionCount: number | null;
+  eventTimeStatus: EventTimeStatus | null;
+  watermarkAtDecision: string | null;
 }
 
 export interface EventRuleOutcomeResponse {

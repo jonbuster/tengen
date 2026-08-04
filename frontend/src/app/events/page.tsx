@@ -25,7 +25,7 @@ import { api, errorMessage } from "@/lib/api";
 import { ClientDataGrid } from "@/components/ClientDataGrid";
 import { formatTimestamp } from "@/lib/formatters";
 import { usePreferences } from "@/lib/preferences";
-import { EventHistoryPage, EventHistorySummary } from "@/lib/types";
+import { EventHistoryPage, EventHistorySummary, EventTimeStatus } from "@/lib/types";
 
 type Filters = {
   eventId: string;
@@ -34,6 +34,7 @@ type Filters = {
   apiKeyId: string;
   matched: string;
   traceAvailable: string;
+  eventTimeStatus: string;
   from: string;
   to: string;
 };
@@ -45,6 +46,7 @@ const INITIAL_FILTERS: Filters = {
   apiKeyId: "",
   matched: "",
   traceAvailable: "",
+  eventTimeStatus: "",
   from: "",
   to: "",
 };
@@ -72,6 +74,7 @@ export default function EventsPage() {
       addParam(params, "apiKeyId", filters.apiKeyId);
       addParam(params, "matched", filters.matched);
       addParam(params, "traceAvailable", filters.traceAvailable);
+      addParam(params, "eventTimeStatus", filters.eventTimeStatus);
       addParam(params, "from", toIso(filters.from));
       addParam(params, "to", toIso(filters.to));
       return (await api.get(`/event-history?${params.toString()}`)).data;
@@ -98,6 +101,12 @@ export default function EventsPage() {
         headerAlign: "center",
         sortable: false,
         renderCell: (params) => <OutcomeSummary event={params.row} />,
+      },
+      {
+        field: "eventTimeStatus",
+        headerName: "Timing",
+        minWidth: 150,
+        renderCell: (params) => <EventTimeStatusChip status={params.value as EventTimeStatus | null} />,
       },
       {
         field: "apiKeyName",
@@ -180,6 +189,15 @@ export default function EventsPage() {
                 <MenuItem value="false">Legacy / unavailable</MenuItem>
               </Select>
             </FormControl>
+            <FormControl size="small" sx={{ minWidth: 170 }}>
+              <InputLabel>Timing</InputLabel>
+              <Select label="Timing" value={filters.eventTimeStatus} onChange={(event) => setFilter("eventTimeStatus", event.target.value)}>
+                <MenuItem value="">All timing</MenuItem>
+                <MenuItem value="ON_TIME">On time</MenuItem>
+                <MenuItem value="LATE_ACCEPTED">Late accepted</MenuItem>
+                <MenuItem value="TOO_LATE">Too late</MenuItem>
+              </Select>
+            </FormControl>
           </Stack>
 
           <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} sx={{ mb: 2 }}>
@@ -219,6 +237,13 @@ function OutcomeSummary({ event }: { event: EventHistorySummary }) {
       </Stack>
     );
   }
+  if (event.eventTimeStatus === "TOO_LATE") {
+    return (
+      <Stack direction="row" alignItems="center" justifyContent="center" sx={{ width: "100%", height: "100%" }}>
+        <Chip label="Skipped: too late" color="warning" size="small" />
+      </Stack>
+    );
+  }
   const matched = event.matchedRuleCount ?? 0;
   const queued = event.queuedActionCount ?? 0;
   const suppressed = event.suppressedActionCount ?? 0;
@@ -229,6 +254,21 @@ function OutcomeSummary({ event }: { event: EventHistorySummary }) {
       {suppressed > 0 && <Chip label={`${suppressed} suppressed`} color="warning" size="small" />}
     </Stack>
   );
+}
+
+function EventTimeStatusChip({ status }: { status: EventTimeStatus | null }) {
+  if (!status) return <Chip label="Unknown" size="small" variant="outlined" />;
+  const labels: Record<EventTimeStatus, string> = {
+    ON_TIME: "On time",
+    LATE_ACCEPTED: "Late accepted",
+    TOO_LATE: "Too late",
+  };
+  const colors: Record<EventTimeStatus, "success" | "warning" | "error"> = {
+    ON_TIME: "success",
+    LATE_ACCEPTED: "warning",
+    TOO_LATE: "error",
+  };
+  return <Chip label={labels[status]} color={colors[status]} size="small" />;
 }
 
 function toIso(value: string) {

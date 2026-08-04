@@ -1,5 +1,6 @@
 package com.tengencorp.tengen.dto;
 
+import com.tengencorp.tengen.entity.EventTimeStatus;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -19,7 +20,8 @@ class CompactEventResponseTest {
             List.of("Large payment"),
             Map.of("Large payment", new AggregateResult("AGGREGATE", "SUM", 2500, 1000, 300, null)),
             Map.of(),
-            List.of());
+            List.of(),
+            EventTimeStatus.LATE_ACCEPTED);
 
         CompactEventResponse compact = CompactEventResponse.from(full);
 
@@ -28,5 +30,6 @@ class CompactEventResponseTest {
         assertThat(compact.rules()).containsExactly("Large payment");
         assertThat(compact.queuedRules()).containsExactly("Large payment");
         assertThat(compact.suppressedRules()).isEmpty();
+        assertThat(compact.eventTimeStatus()).isEqualTo(EventTimeStatus.LATE_ACCEPTED);
     }
 }

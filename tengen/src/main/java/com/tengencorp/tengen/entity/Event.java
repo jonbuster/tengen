@@ -3,6 +3,8 @@ package com.tengencorp.tengen.entity;
 import com.tengencorp.tengen.entity.ApiKey;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -64,6 +66,15 @@ public class Event {
 
     @Column(name = "suppressed_action_count")
     private Integer suppressedActionCount;
+
+    /** Event-time classification captured before rule evaluation. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "event_time_status", length = 20)
+    private EventTimeStatus eventTimeStatus;
+
+    /** Watermark used to classify this event; null for first events and legacy rows. */
+    @Column(name = "watermark_at_decision")
+    private Instant watermarkAtDecision;
 
     @PrePersist
     void onCreate() {

@@ -48,6 +48,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -120,7 +121,8 @@ class EventProcessorIntegrationTest {
     @BeforeEach
     void cleanUp() {
         jdbcTemplate.execute("TRUNCATE TABLE rule_action_state, rule_action_windows, "
-            + "webhook_outbox, rule_events, rule_revisions, event_idempotency, events, "
+            + "webhook_outbox, rule_events, rule_revisions, event_idempotency, "
+            + "event_stream_watermarks, events, "
             + "rules, api_keys, refresh_sessions RESTART IDENTITY CASCADE");
         // These legacy processing assertions exercise the full response shape;
         // producer-facing new keys default to COMPACT in production.
@@ -321,9 +323,186 @@ class EventProcessorIntegrationTest {
 
         mockMvc.perform(eventPost()
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(eventJsonAt("transaction", "payment-api", 1, "PH", "2026-07-31T15:30:00Z")))
+                .content(eventJsonAt("transaction", "payment-api", 1, "PH", "2026-07-31T15:31:00Z")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.matched").value(false));
+    }
+
+    @Test
+    void tooLateEventIsRetainedButDoesNotEvaluateRulesOrQueueActions() throws Exception {
+        Rule rule = new Rule();
+        rule.setName("watermark-webhook");
+        rule.setRuleType(RuleType.CONDITION);
+        rule.setAction(RuleAction.WEBHOOK);
+        rule.setCallbackUrl("https://example.com/hooks/watermarks");
+        rule.setEventType("watermark-event");
+        rule.setSource("watermark-source");
+        rule.setConditionScript("data.amount >= 1");
+        rule.setActive(true);
+        ruleRepository.save(rule);
+
+        mockMvc.perform(eventPost().content(eventJsonAt("watermark-event", "watermark-source", 1,
+                "PH", "2026-08-03T10:00:00Z")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.eventTimeStatus").value("ON_TIME"))
+            .andExpect(jsonPath("$.matched").value(true));
+        mockMvc.perform(eventPost().content(eventJsonAt("watermark-event", "watermark-source", 1,
+                "PH", "2026-08-03T10:10:00Z")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.eventTimeStatus").value("ON_TIME"))
+            .andExpect(jsonPath("$.matched").value(true));
+
+        mockMvc.perform(eventPost().content(eventJsonAt("watermark-event", "watermark-source", 1,
+                "PH", "2026-08-03T10:04:00Z")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("accepted"))
+            .andExpect(jsonPath("$.eventTimeStatus").value("TOO_LATE"))
+            .andExpect(jsonPath("$.matched").value(false))
+            .andExpect(jsonPath("$.rules").isEmpty())
+            .andExpect(jsonPath("$.queuedRules").isEmpty());
+
+        assertThat(webhookOutboxRepository.findAll()).hasSize(2);
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from event_rule_outcomes", Integer.class)).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from events where event_time_status = 'TOO_LATE'", Integer.class))
+            .isEqualTo(1);
+    }
+
+    @Test
+    void lateAcceptedEventContinuesThroughRuleEvaluation() throws Exception {
+        conditionRule("late-accepted-condition", "watermark-event", "watermark-source",
+            "data.amount >= 1", true);
+
+        mockMvc.perform(eventPost().content(eventJsonAt("watermark-event", "watermark-source", 1,
+                "PH", "2026-08-03T10:00:00Z")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.eventTimeStatus").value("ON_TIME"));
+        mockMvc.perform(eventPost().content(eventJsonAt("watermark-event", "watermark-source", 1,
+                "PH", "2026-08-03T10:10:00Z")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.eventTimeStatus").value("ON_TIME"));
+
+        mockMvc.perform(eventPost().content(eventJsonAt("watermark-event", "watermark-source", 1,
+                "PH", "2026-08-03T10:07:00Z")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.eventTimeStatus").value("LATE_ACCEPTED"))
+            .andExpect(jsonPath("$.matched").value(true))
+            .andExpect(jsonPath("$.rules[0]").value("late-accepted-condition"));
+    }
+
+    @Test
+    void lateAcceptedAggregateUsesItsOwnEventTimeWindow() throws Exception {
+        aggregateRule("late-accepted-sum", "watermark-event", "watermark-source",
+            "data.amount >= 0", AggregateType.SUM, "data.amount", 400, 300);
+
+        mockMvc.perform(eventPost().content(eventJsonAt("watermark-event", "watermark-source", 100,
+                "PH", "2026-08-03T10:00:00Z")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.eventTimeStatus").value("ON_TIME"))
+            .andExpect(jsonPath("$.matched").value(false));
+        mockMvc.perform(eventPost().content(eventJsonAt("watermark-event", "watermark-source", 100,
+                "PH", "2026-08-03T10:10:00Z")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.eventTimeStatus").value("ON_TIME"))
+            .andExpect(jsonPath("$.matched").value(false));
+
+        mockMvc.perform(eventPost().content(eventJsonAt("watermark-event", "watermark-source", 500,
+                "PH", "2026-08-03T10:07:00Z")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.eventTimeStatus").value("LATE_ACCEPTED"))
+            .andExpect(jsonPath("$.matched").value(true))
+            .andExpect(jsonPath("$.aggregates['late-accepted-sum'].value").value(500.0));
+    }
+
+    @Test
+    void watermarkStreamsAreIndependentBySourceAndType() throws Exception {
+        mockMvc.perform(eventPost().content(eventJsonAt("watermark-event", "source-a", 1,
+                "PH", "2026-08-03T10:10:00Z")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.eventTimeStatus").value("ON_TIME"));
+
+        mockMvc.perform(eventPost().content(eventJsonAt("watermark-event", "source-b", 1,
+                "PH", "2026-08-03T10:00:00Z")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.eventTimeStatus").value("ON_TIME"));
+
+        mockMvc.perform(eventPost().content(eventJsonAt("other-event", "source-a", 1,
+                "PH", "2026-08-03T10:00:00Z")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.eventTimeStatus").value("ON_TIME"));
+
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from event_stream_watermarks", Integer.class)).isEqualTo(3);
+    }
+
+    @Test
+    void idempotentReplayDoesNotCreateOrAdvanceAnotherWatermarkEvent() throws Exception {
+        String first = eventJsonAt("watermark-event", "watermark-source", 1,
+            "PH", "2026-08-03T10:10:00Z");
+        mockMvc.perform(eventPost().header("Idempotency-Key", "watermark-replay").content(first))
+            .andExpect(status().isOk())
+            .andExpect(header().string("X-Idempotency-Replayed", "false"))
+            .andExpect(jsonPath("$.eventTimeStatus").value("ON_TIME"));
+        mockMvc.perform(eventPost().header("Idempotency-Key", "watermark-replay").content(first))
+            .andExpect(status().isOk())
+            .andExpect(header().string("X-Idempotency-Replayed", "true"))
+            .andExpect(jsonPath("$.eventTimeStatus").value("ON_TIME"));
+
+        mockMvc.perform(eventPost().content(eventJsonAt("watermark-event", "watermark-source", 1,
+                "PH", "2026-08-03T10:04:00Z")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.eventTimeStatus").value("TOO_LATE"));
+
+        assertThat(eventRepository.count()).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+            "select count(*) from event_stream_watermarks", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject(
+            "select max(max_occurred_at) from event_stream_watermarks", Instant.class))
+            .isEqualTo(Instant.parse("2026-08-03T10:10:00Z"));
+    }
+
+    @Test
+    void concurrentEventsKeepTheStreamMaximumMonotonic() throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Integer> older = executor.submit(() -> mockMvc.perform(
+                eventPost().content(eventJsonAt("concurrent-event", "concurrent-source", 1,
+                    "PH", "2026-08-03T10:00:00Z")))
+                .andReturn().getResponse().getStatus());
+            Future<Integer> newer = executor.submit(() -> mockMvc.perform(
+                eventPost().content(eventJsonAt("concurrent-event", "concurrent-source", 1,
+                    "PH", "2026-08-03T10:10:00Z")))
+                .andReturn().getResponse().getStatus());
+
+            assertThat(older.get(10, TimeUnit.SECONDS)).isEqualTo(200);
+            assertThat(newer.get(10, TimeUnit.SECONDS)).isEqualTo(200);
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertThat(jdbcTemplate.queryForObject(
+            "select max_occurred_at from event_stream_watermarks "
+                + "where event_type = 'concurrent-event' and source = 'concurrent-source'",
+            Instant.class)).isEqualTo(Instant.parse("2026-08-03T10:10:00Z"));
+    }
+
+    @Test
+    @WithMockUser
+    void eventHistoryCanFilterByEventTimeStatus() throws Exception {
+        mockMvc.perform(eventPost().content(eventJsonAt("watermark-event", "watermark-source", 1,
+                "PH", "2026-08-03T10:10:00Z")))
+            .andExpect(status().isOk());
+        mockMvc.perform(eventPost().content(eventJsonAt("watermark-event", "watermark-source", 1,
+                "PH", "2026-08-03T10:04:00Z")))
+            .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/event-history")
+                .param("eventTimeStatus", "TOO_LATE"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.totalElements").value(1))
+            .andExpect(jsonPath("$.content[0].eventTimeStatus").value("TOO_LATE"))
+            .andExpect(jsonPath("$.content[0].watermarkAtDecision").value("2026-08-03T10:05:00Z"));
     }
 
     @Test

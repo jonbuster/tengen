@@ -21,6 +21,7 @@ import com.tengencorp.tengen.dto.SequenceResult;
 import com.tengencorp.tengen.entity.EventIdempotency;
 import com.tengencorp.tengen.entity.EventIdempotencyStatus;
 import com.tengencorp.tengen.entity.ResponseMode;
+import com.tengencorp.tengen.entity.EventTimeStatus;
 import com.tengencorp.tengen.exception.IdempotencyConflictException;
 import com.tengencorp.tengen.helper.EventRequestHasher;
 import com.tengencorp.tengen.repository.EventIdempotencyRepository;
@@ -59,9 +60,13 @@ public class EventService {
     private final EventRuleOutcomeRepository eventRuleOutcomeRepository;
     private final EventRequestHasher eventRequestHasher;
     private final ObjectMapper objectMapper;
+    private final EventWatermarkService eventWatermarkService;
     private final Counter acceptedEvents;
     private final Counter matchedEvents;
     private final Counter replayedEvents;
+    private final Counter onTimeEvents;
+    private final Counter lateAcceptedEvents;
+    private final Counter tooLateEvents;
     private final long maxFutureSkewSeconds;
 
     public EventService(EventRepository eventRepository, ApiKeyRepository apiKeyRepository,
@@ -73,7 +78,8 @@ public class EventService {
                         MeterRegistry meterRegistry,
                         @Value("${tengen.ingestion.max-future-skew-seconds:300}")
                         long maxFutureSkewSeconds,
-                        EventRuleOutcomeRepository eventRuleOutcomeRepository) {
+                        EventRuleOutcomeRepository eventRuleOutcomeRepository,
+                        EventWatermarkService eventWatermarkService) {
         this.eventRepository = eventRepository;
         this.apiKeyRepository = apiKeyRepository;
         this.ruleRepository = ruleRepository;
@@ -85,9 +91,15 @@ public class EventService {
         this.eventRuleOutcomeRepository = eventRuleOutcomeRepository;
         this.eventRequestHasher = eventRequestHasher;
         this.objectMapper = objectMapper;
+        this.eventWatermarkService = eventWatermarkService;
         this.acceptedEvents = meterRegistry.counter("tengen.ingestion.events", "result", "accepted");
         this.matchedEvents = meterRegistry.counter("tengen.ingestion.events", "result", "matched");
         this.replayedEvents = meterRegistry.counter("tengen.ingestion.events", "result", "replayed");
+        this.onTimeEvents = meterRegistry.counter("tengen.ingestion.event_time", "status", "on_time");
+        this.lateAcceptedEvents = meterRegistry.counter(
+            "tengen.ingestion.event_time", "status", "late_accepted");
+        this.tooLateEvents = meterRegistry.counter(
+            "tengen.ingestion.event_time", "status", "too_late");
         this.maxFutureSkewSeconds = maxFutureSkewSeconds;
     }
 
@@ -177,9 +189,31 @@ public class EventService {
 
     private ProcessingResult processEvent(EventRequest request, ApiKey apiKey) {
         Instant occurredAt = request.timestamp() != null ? request.timestamp() : Instant.now();
+        EventTimeDecision eventTimeDecision = eventWatermarkService.classify(
+            request.type(), request.source(), occurredAt);
         Event event = new Event(request.type(), request.source(), occurredAt, request.data(),
             apiKey);
+        event.setEventTimeStatus(eventTimeDecision.status());
+        event.setWatermarkAtDecision(eventTimeDecision.watermarkAtDecision());
         event = eventRepository.save(event);
+
+        if (eventTimeDecision.status() == EventTimeStatus.TOO_LATE) {
+            recordEventTimeMetric(eventTimeDecision.status());
+            acceptedEvents.increment();
+            event.recordProcessingTrace(0, 0, 0);
+            return new ProcessingResult(
+                event,
+                new EventResponse(
+                    request,
+                    "accepted",
+                    false,
+                    List.of(),
+                    List.of(),
+                    Map.of(),
+                    Map.of(),
+                    List.of(),
+                    eventTimeDecision.status()));
+        }
 
         List<Rule> activeRules = ruleRepository.findActiveRulesForEvent(
             event.getType(), event.getSource(), RuleType.SEQUENCE);
@@ -249,6 +283,7 @@ public class EventService {
         eventRuleOutcomeRepository.saveAll(outcomes);
         event.recordProcessingTrace(
             matchedRuleNames.size(), queuedRuleNames.size(), suppressedRuleNames.size());
+        recordEventTimeMetric(eventTimeDecision.status());
         acceptedEvents.increment();
         if (matched) {
             matchedEvents.increment();
@@ -263,7 +298,16 @@ public class EventService {
                 queuedRuleNames,
                 aggregates,
                 sequences,
-                suppressedRuleNames));
+                suppressedRuleNames,
+                eventTimeDecision.status()));
+    }
+
+    private void recordEventTimeMetric(EventTimeStatus status) {
+        switch (status) {
+            case ON_TIME -> onTimeEvents.increment();
+            case LATE_ACCEPTED -> lateAcceptedEvents.increment();
+            case TOO_LATE -> tooLateEvents.increment();
+        }
     }
 
     private String normalizeIdempotencyKey(String idempotencyKey) {

@@ -177,6 +177,10 @@ volume.
   suppressed-action outcomes for new events and links them to current webhook
   delivery history. Older events remain available with an explicit trace-unavailable
   indicator.
+- **Event-time lateness:** durable watermarks are tracked per source and event
+  type. Events within the configured grace period are evaluated normally; events
+  at or before the watermark are retained and reported as too late without
+  changing rule state or queuing actions.
 - **Quality gates:** backend Testcontainers integration tests, ESLint, Vitest,
   Playwright smoke tests, and CI checks now cover the main admin and delivery
   workflows.
@@ -234,6 +238,11 @@ when a completed idempotent response is replayed.
 | **Once per window** | Queues at most one webhook for each fixed event-time window and group. |
 
 Aggregate windows exclude the lower time boundary and include the current event. Rule testing includes the candidate event in aggregate calculations but does not persist it, change trigger state, or send a webhook.
+
+Ingestion responses include `eventTimeStatus`: `ON_TIME`, `LATE_ACCEPTED`, or
+`TOO_LATE`. The global `INGESTION_ALLOWED_LATENESS_SECONDS` setting controls the
+grace period and defaults to five minutes. A too-late event still returns HTTP
+`200` with `status: "accepted"`, but it has no rule matches or queued actions.
 
 ### Reliable Webhook Delivery
 
@@ -326,6 +335,7 @@ The development defaults work with the included Docker Compose database. Expand 
 | `WEBHOOK_SIGNING_SECRET` | development-only value | HMAC secret used to authenticate webhook deliveries. |
 | `INGESTION_MAX_BODY_BYTES` | `1048576` | Maximum event request size, including chunked bodies. |
 | `INGESTION_RATE_LIMIT_PER_MINUTE` | `600` | Per-API-key limit for the initial single-instance deployment. |
+| `INGESTION_ALLOWED_LATENESS_SECONDS` | `300` | Event-time grace period for out-of-order events. Events at or before the durable watermark are retained but are not evaluated. |
 | `RETENTION_ENABLED` / `RETENTION_DAYS` | `true` / `90` | Terminal operational-data cleanup policy. Rule revisions are never removed. |
 | `RETENTION_BATCH_SIZE` / `RETENTION_SCHEDULE` | `1000` / `0 15 3 * * *` | Bounded cleanup batch and UTC cron schedule. |
 
@@ -384,7 +394,7 @@ docker compose -f tengen/docker-compose.yml up -d --build frontend
 
 The durable webhook outbox, background delivery worker, automatic retries, dead-letter handling, and delivery-history console are implemented.
 
-See the [CEP roadmap](plans/cep-roadmap-plan.md) for completed work and future capabilities such as absence patterns, watermarks, broker connectors, and replay or backfill support.
+See the [CEP roadmap](plans/cep-roadmap-plan.md) for completed work and future capabilities such as absence patterns, broker connectors, and replay or backfill support.
 
 Detailed webhook implementation plans:
 

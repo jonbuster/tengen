@@ -30,6 +30,7 @@ services:
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
       WEBHOOK_SIGNING_SECRET: ${WEBHOOK_SIGNING_SECRET:-dev-webhook-signing-secret-change-me}
+      INGESTION_ALLOWED_LATENESS_SECONDS: ${INGESTION_ALLOWED_LATENESS_SECONDS:-300}
       # Browser origin for the SPA (compose serves it on :3000)
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
       WEBHOOK_WORKER_ENABLED: ${WEBHOOK_WORKER_ENABLED:-true}

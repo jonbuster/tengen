@@ -6,6 +6,7 @@ import com.tengencorp.tengen.dto.EventHistorySummary;
 import com.tengencorp.tengen.dto.EventRuleOutcomeResponse;
 import com.tengencorp.tengen.dto.WebhookDeliverySummary;
 import com.tengencorp.tengen.entity.Event;
+import com.tengencorp.tengen.entity.EventTimeStatus;
 import com.tengencorp.tengen.exception.NotFoundException;
 import com.tengencorp.tengen.repository.EventRepository;
 import com.tengencorp.tengen.repository.EventRuleOutcomeRepository;
@@ -45,7 +46,7 @@ public class EventHistoryAdminService {
     @Transactional(readOnly = true)
     public EventHistoryPage list(int page, int size, Long eventId, String type, String source,
                                  Long apiKeyId, Boolean matched, Boolean traceAvailable,
-                                 Instant from, Instant to) {
+                                 EventTimeStatus eventTimeStatus, Instant from, Instant to) {
         validatePage(page, size);
         if (from != null && to != null && !from.isBefore(to)) {
             throw new IllegalArgumentException("from must be earlier than to");
@@ -89,6 +90,10 @@ public class EventHistoryAdminService {
                     ? builder.and(traced, builder.greaterThan(count, 0))
                     : builder.and(traced, builder.equal(count, 0));
             });
+        }
+        if (eventTimeStatus != null) {
+            specification = specification.and((root, query, builder) ->
+                builder.equal(root.get("eventTimeStatus"), eventTimeStatus));
         }
         if (from != null) {
             specification = specification.and((root, query, builder) ->

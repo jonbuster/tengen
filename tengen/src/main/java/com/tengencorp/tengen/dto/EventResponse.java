@@ -1,6 +1,6 @@
 package com.tengencorp.tengen.dto;
 
-import com.tengencorp.tengen.dto.AggregateResult;
+import com.tengencorp.tengen.entity.EventTimeStatus;
 
 import java.util.List;
 import java.util.Map;
@@ -16,6 +16,7 @@ import java.util.Map;
  * @param aggregates per-rule windowed aggregate results (AGGREGATE matches only)
  * @param sequences completed sequence details (SEQUENCE matches only)
  * @param suppressedRules matched webhook rules whose delivery was suppressed by cooldown
+ * @param eventTimeStatus event-time classification made before rule evaluation
  */
 public record EventResponse(
         Object event,
@@ -25,7 +26,8 @@ public record EventResponse(
         List<String> queuedRules,
         Map<String, AggregateResult> aggregates,
         Map<String, SequenceResult> sequences,
-        List<String> suppressedRules) {
+        List<String> suppressedRules,
+        EventTimeStatus eventTimeStatus) {
 
     public EventResponse {
         rules = rules != null ? List.copyOf(rules) : List.of();
@@ -39,10 +41,19 @@ public record EventResponse(
     public EventResponse(Object event, String status, boolean matched, List<String> rules,
                          Map<String, AggregateResult> aggregates,
                          List<String> suppressedRules) {
-        this(event, status, matched, rules, List.of(), aggregates, Map.of(), suppressedRules);
+        this(event, status, matched, rules, List.of(), aggregates, Map.of(), suppressedRules, null);
+    }
+
+    /** Backward-compatible constructor for callers using the outbox response shape. */
+    public EventResponse(Object event, String status, boolean matched, List<String> rules,
+                         List<String> queuedRules,
+                         Map<String, AggregateResult> aggregates,
+                         Map<String, SequenceResult> sequences,
+                         List<String> suppressedRules) {
+        this(event, status, matched, rules, queuedRules, aggregates, sequences, suppressedRules, null);
     }
 
     public static EventResponse noMatch(Object event) {
-        return new EventResponse(event, "accepted", false, List.of(), List.of(), Map.of(), Map.of(), List.of());
+        return new EventResponse(event, "accepted", false, List.of(), List.of(), Map.of(), Map.of(), List.of(), null);
     }
 }
