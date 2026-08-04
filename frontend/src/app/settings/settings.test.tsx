@@ -26,12 +26,14 @@ function renderSettings() {
 
 describe("Settings page", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     getMock.mockResolvedValue({ data: DEFAULT_PREFERENCES });
     putMock.mockImplementation((_path: string, data: unknown) => Promise.resolve({ data }));
   });
 
   afterEach(() => {
     cleanup();
+    window.localStorage.clear();
     vi.clearAllMocks();
   });
 
@@ -42,6 +44,9 @@ describe("Settings page", () => {
     expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dark theme" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Teal accent" })).toHaveAttribute("aria-pressed", "false");
+    for (const color of ["Yellow", "Red", "Pink", "Grey", "Black", "Neon"]) {
+      expect(screen.getByRole("button", { name: `${color} accent` })).toBeInTheDocument();
+    }
     expect(screen.getByRole("radio", { name: "UTC" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Dark theme" }));

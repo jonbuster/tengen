@@ -9,7 +9,7 @@ public record SettingsRequest(
     String themeMode,
 
     @NotBlank(message = "accentColor is required")
-    @Pattern(regexp = "blue|indigo|purple|teal|green|orange",
+    @Pattern(regexp = "blue|indigo|purple|teal|green|orange|yellow|red|pink|grey|black|neon",
         message = "accentColor is not supported")
     String accentColor,
 

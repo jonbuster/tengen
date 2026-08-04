@@ -11,7 +11,19 @@ import {
 import { api, errorMessage } from "@/lib/api";
 
 export type ThemeMode = "light" | "dark" | "system";
-export type AccentKey = "blue" | "indigo" | "purple" | "teal" | "green" | "orange";
+export type AccentKey =
+  | "blue"
+  | "indigo"
+  | "purple"
+  | "teal"
+  | "green"
+  | "orange"
+  | "yellow"
+  | "red"
+  | "pink"
+  | "grey"
+  | "black"
+  | "neon";
 export type TimeDisplay = "local" | "utc";
 
 export interface AppPreferences {
@@ -25,6 +37,8 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
   accentColor: "blue",
   timeDisplay: "local",
 };
+
+const PREFERENCES_STORAGE_KEY = "tengen.preferences";
 
 interface PreferencesContextValue {
   preferences: AppPreferences;
@@ -53,7 +67,9 @@ function isThemeMode(value: unknown): value is ThemeMode {
 
 function isAccentKey(value: unknown): value is AccentKey {
   return value === "blue" || value === "indigo" || value === "purple"
-    || value === "teal" || value === "green" || value === "orange";
+    || value === "teal" || value === "green" || value === "orange"
+    || value === "yellow" || value === "red" || value === "pink"
+    || value === "grey" || value === "black" || value === "neon";
 }
 
 function isTimeDisplay(value: unknown): value is TimeDisplay {
@@ -75,6 +91,27 @@ export function parsePreferences(value: unknown): AppPreferences | null {
     accentColor: candidate.accentColor,
     timeDisplay: candidate.timeDisplay,
   };
+}
+
+function readStoredPreferences(): AppPreferences | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const stored = window.localStorage.getItem(PREFERENCES_STORAGE_KEY);
+    return stored ? parsePreferences(JSON.parse(stored)) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredPreferences(preferences: AppPreferences) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify(preferences));
+  } catch {
+    // Local storage is only a cache, so storage failures should not affect settings.
+  }
 }
 
 export function PreferencesProvider({
@@ -101,6 +138,8 @@ export function PreferencesProvider({
     }
 
     let active = true;
+    const cached = readStoredPreferences();
+    if (cached) setPreferences(cached);
     setLoading(true);
     setError(null);
 
@@ -108,7 +147,10 @@ export function PreferencesProvider({
       .then((response) => {
         const stored = parsePreferences(response.data);
         if (!stored) throw new Error("Backend returned invalid preferences");
-        if (active) setPreferences(stored);
+        if (active) {
+          setPreferences(stored);
+          writeStoredPreferences(stored);
+        }
       })
       .catch((reason: unknown) => {
         if (active) setError(`Unable to load preferences. ${errorMessage(reason)}`);
@@ -145,6 +187,7 @@ export function PreferencesProvider({
       const saved = parsePreferences(response.data);
       if (!saved) throw new Error("Backend returned invalid preferences");
       setPreferences(saved);
+      writeStoredPreferences(saved);
       return true;
     } catch (reason) {
       setPreferences(previous);

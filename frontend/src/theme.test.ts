@@ -6,6 +6,12 @@ describe("app theme", () => {
     expect(accentMainColor("blue")).toBe("#1976d2");
     expect(createAppTheme("light", "teal").palette.primary.main).toBe("#00796b");
     expect(createAppTheme("light", "orange").palette.primary.main).toBe("#ed6c02");
+    expect(createAppTheme("light", "yellow").palette.primary.main).toBe("#fbc02d");
+    expect(createAppTheme("light", "red").palette.primary.main).toBe("#d32f2f");
+    expect(createAppTheme("light", "pink").palette.primary.main).toBe("#c2185b");
+    expect(createAppTheme("light", "grey").palette.primary.main).toBe("#616161");
+    expect(createAppTheme("light", "black").palette.primary.main).toBe("#000000");
+    expect(createAppTheme("light", "neon").palette.primary.main).toBe("#39ff14");
   });
 
   it("creates distinct light and dark surfaces", () => {

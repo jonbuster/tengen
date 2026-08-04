@@ -11,6 +11,12 @@ export const ACCENT_OPTIONS: ReadonlyArray<{ key: AccentKey; label: string; main
   { key: "teal", label: "Teal", main: "#00796b" },
   { key: "green", label: "Green", main: "#2e7d32" },
   { key: "orange", label: "Orange", main: "#ed6c02" },
+  { key: "yellow", label: "Yellow", main: "#fbc02d" },
+  { key: "red", label: "Red", main: "#d32f2f" },
+  { key: "pink", label: "Pink", main: "#c2185b" },
+  { key: "grey", label: "Grey", main: "#616161" },
+  { key: "black", label: "Black", main: "#000000" },
+  { key: "neon", label: "Neon", main: "#39ff14" },
 ];
 
 export function accentMainColor(accentColor: AccentKey) {

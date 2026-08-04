@@ -68,6 +68,7 @@ async function waitForSaved() {
 
 describe("preferences", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     getMock.mockResolvedValue({ data: DEFAULT_PREFERENCES });
     putMock.mockImplementation((_path: string, data: unknown) => Promise.resolve({ data }));
     vi.stubGlobal("matchMedia", vi.fn(() => ({
@@ -79,6 +80,7 @@ describe("preferences", () => {
 
   afterEach(() => {
     cleanup();
+    window.localStorage.clear();
     vi.clearAllMocks();
     vi.unstubAllGlobals();
   });
@@ -106,6 +108,25 @@ describe("preferences", () => {
       accentColor: "teal",
       timeDisplay: "utc",
     });
+  });
+
+  it("hydrates from the cache and refreshes it with the API response", async () => {
+    const cached = { ...DEFAULT_PREFERENCES, accentColor: "pink" as const };
+    const latest = { ...DEFAULT_PREFERENCES, accentColor: "neon" as const };
+    window.localStorage.setItem("tengen.preferences", JSON.stringify(cached));
+
+    let resolveLoad: (value: { data: typeof latest }) => void = () => {};
+    getMock.mockReturnValue(new Promise((resolve) => {
+      resolveLoad = resolve;
+    }));
+    renderProbe();
+
+    await waitFor(() => expect(JSON.parse(screen.getByTestId("preferences").textContent ?? "{}")).toEqual(cached));
+
+    resolveLoad({ data: latest });
+    await waitForLoaded();
+    expect(JSON.parse(screen.getByTestId("preferences").textContent ?? "{}")).toEqual(latest);
+    expect(window.localStorage.getItem("tengen.preferences")).toBe(JSON.stringify(latest));
   });
 
   it("keeps defaults and reports malformed API data", async () => {
