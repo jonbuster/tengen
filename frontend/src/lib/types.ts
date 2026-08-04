@@ -99,6 +99,69 @@ export interface RuleRevisionDetail {
   snapshot: RuleSnapshot;
 }
 
+export type ReplayJobStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+export type ReplayActionMode = "NO_ACTIONS";
+
+export interface ReplayJob {
+  id: number;
+  status: ReplayJobStatus;
+  ruleId: number;
+  ruleRevision: number;
+  snapshotSchemaVersion: number;
+  ruleName: string;
+  ruleType: RuleType;
+  actionMode: ReplayActionMode;
+  occurredFrom: string;
+  occurredTo: string;
+  warmupFrom: string;
+  apiKeyId: number | null;
+  totalOutputEvents: number;
+  totalMaterializedEvents: number;
+  processedOutputEvents: number;
+  matchedEvents: number;
+  errorEvents: number;
+  progressPercentage: number;
+  lastCommittedPosition: number | null;
+  createdBy: string;
+  createdAt: string;
+  startedAt: string | null;
+  updatedAt: string;
+  completedAt: string | null;
+  failureCategory: string | null;
+  failureMessage: string | null;
+}
+
+export interface ReplayAggregateResult {
+  ruleType: string;
+  function: string;
+  value: number;
+  threshold: number;
+  windowSeconds: number;
+  groupKey: string | null;
+}
+
+export interface ReplayJobOutcome {
+  id: number;
+  originalEventId: number | null;
+  inputPosition: number;
+  type: string;
+  source: string;
+  occurredAt: string;
+  matched: boolean;
+  groupKey: string | null;
+  aggregate: ReplayAggregateResult | null;
+  errorCategory: string | null;
+  completedAt: string;
+}
+
+export interface ReplayJobOutcomePage {
+  content: ReplayJobOutcome[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
 export interface RuleRequest {
   name: string;
   ruleType: RuleType;

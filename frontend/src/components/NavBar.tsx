@@ -18,6 +18,7 @@ import RuleIcon from "@mui/icons-material/Rule";
 import ScienceIcon from "@mui/icons-material/Science";
 import HistoryIcon from "@mui/icons-material/History";
 import EventNoteIcon from "@mui/icons-material/EventNote";
+import ReplayIcon from "@mui/icons-material/Replay";
 import SettingsIcon from "@mui/icons-material/Settings";
 import Link from "next/link";
 import Image from "next/image";
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { href: "/keys", label: "API Keys", icon: <KeyIcon /> },
   { href: "/deliveries", label: "Deliveries", icon: <HistoryIcon /> },
   { href: "/events", label: "Events", icon: <EventNoteIcon /> },
+  { href: "/replays", label: "Replays", icon: <ReplayIcon /> },
   { href: "/settings", label: "Settings", icon: <SettingsIcon /> },
 ];
 

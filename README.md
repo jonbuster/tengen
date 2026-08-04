@@ -48,6 +48,7 @@ An accepted event response reports which rules matched, which webhook actions we
 | **API Keys** | Create scoped ingestion keys, view their status, and revoke them. Raw keys are shown only once. |
 | **Deliveries** | Filter webhook history, inspect attempts and errors, refresh the list, and retry dead-lettered deliveries. |
 | **Events** | Search accepted events, inspect their payloads, review matched-rule outcomes, and follow webhook deliveries. |
+| **Replays** | Run bounded, analysis-only evaluations against immutable CONDITION or AGGREGATE rule revisions. |
 
 Delivery auto-refresh is off by default. It can be enabled when a near-real-time view of active deliveries is useful.
 
@@ -309,8 +310,16 @@ flowchart LR
 | `/api/rules/**` | Admin session | Manage, test, archive, restore, and inspect rule revisions. |
 | `/api/keys/**` | Admin session | Manage ingestion API keys. |
 | `/api/webhook-deliveries/**` | Admin session | Search delivery history, inspect details, and retry dead-lettered work. |
+| `/api/replay-jobs/**` | Admin session | Create analysis-only replay jobs and read their progress and outcomes. |
 
 Admin access and refresh tokens are stored in httpOnly cookies, so client-side JavaScript does not read them. API keys are stored as hashes and the raw value is available only when a key is created.
+
+Historical replay jobs read immutable event copies and never send webhooks or
+change live rule state, watermarks, event traces, or delivery records. The MVP
+supports one rule revision at a time, with an inclusive start and exclusive end
+event-time range. Replay inputs and results remain durable until a later
+controls/history feature defines cleanup; keep the event cap conservative for
+storage planning.
 
 ## Configuration
 
@@ -335,6 +344,11 @@ The development defaults work with the included Docker Compose database. Expand 
 | `WEBHOOK_WORKER_LEASE_DURATION_MS` | `300000` | Claim lease used for restart recovery. |
 | `WEBHOOK_WORKER_CONNECT_TIMEOUT_MS` / `WEBHOOK_WORKER_READ_TIMEOUT_MS` | `3000` / `5000` | Callback connection and response timeouts. |
 | `WEBHOOK_SIGNING_SECRET` | development-only value | HMAC secret used to authenticate webhook deliveries. |
+| `TENGEN_REPLAY_WORKER_ENABLED` | `true` | Enable the analysis-only replay worker. |
+| `TENGEN_REPLAY_WORKER_POLL_INTERVAL_MS` / `TENGEN_REPLAY_WORKER_INITIAL_DELAY_MS` | `1000` / `1000` | Replay-worker polling and startup delays. |
+| `TENGEN_REPLAY_WORKER_BATCH_SIZE` / `TENGEN_REPLAY_WORKER_LEASE_DURATION_MS` | `100` / `300000` | Replay batch size and restart-recovery lease. |
+| `TENGEN_REPLAY_MAX_RANGE_DAYS` | `31` | Maximum requested event-time range for a replay job. |
+| `TENGEN_REPLAY_MAX_MATERIALIZED_OUTPUT_EVENTS` | `10000` | Maximum eligible output-range events materialized for one job. |
 | `TENGEN_ABSENCE_WORKER_ENABLED` | `true` | Enable automatic absence-window evaluation. |
 | `TENGEN_ABSENCE_WORKER_POLL_INTERVAL_MS` / `TENGEN_ABSENCE_WORKER_INITIAL_DELAY_MS` | `1000` / `1000` | Absence-worker polling and startup delays. |
 | `TENGEN_ABSENCE_WORKER_BATCH_SIZE` | `100` | Maximum absence instances processed per poll. |
@@ -401,9 +415,19 @@ docker compose -f tengen/docker-compose.yml up -d --build frontend
 
 ## Roadmap
 
-The durable webhook outbox, background delivery worker, automatic retries, dead-letter handling, and delivery-history console are implemented.
+The durable webhook outbox, background delivery worker, automatic retries,
+dead-letter handling, delivery-history console, watermarks, and absence patterns
+are implemented.
 
-See the [CEP roadmap](plans/cep-roadmap-plan.md) for completed work and future capabilities such as absence patterns, broker connectors, and replay or backfill support.
+Safe replay/backfill analysis is now implemented. The next planned sequence
+adds optional Kafka ingestion and replay-job controls and history. See the
+[CEP roadmap](plans/cep-roadmap-plan.md) for completed work and ordering.
+
+Detailed next-feature plans:
+
+- [Replay and backfill job MVP](plans/2026-08-04-1244-replay-backfill-job-mvp-plan.md)
+- [Kafka connector MVP](plans/2026-08-04-1244-kafka-connector-mvp-plan.md)
+- [Replay job controls and history](plans/2026-08-04-1244-replay-job-controls-history-plan.md)
 
 Detailed webhook implementation plans:
 

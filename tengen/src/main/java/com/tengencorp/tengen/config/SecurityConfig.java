@@ -46,7 +46,7 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/health/liveness", "/actuator/health/readiness").permitAll()
                 .requestMatchers("/actuator/prometheus").authenticated()
                 .requestMatchers("/api/rules/**", "/api/keys/**", "/api/webhook-deliveries/**",
-                    "/api/event-history/**", "/api/settings").authenticated()
+                    "/api/event-history/**", "/api/replay-jobs/**", "/api/settings").authenticated()
                 .requestMatchers("/api/events").authenticated()
                 .anyRequest().denyAll())
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)

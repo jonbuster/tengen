@@ -244,7 +244,10 @@ Implemented as the next CEP pattern slice:
 - Completed sequence responses and webhook payloads include ordered step event details.
 - The admin console supports adding, removing, reordering, and testing sequence steps without persisting test events.
 
-The implementation intentionally leaves absence detection, idle-stream advancement, reusable events, and branching patterns for later slices.
+At the time of the sequence slice, absence detection, idle-stream advancement,
+reusable events, and branching patterns were deferred. Absence detection and the
+idle advancement needed to close absence windows are now implemented; reusable
+events and branching patterns remain future work.
 
 ## Implemented: Event Explorer
 
@@ -265,12 +268,32 @@ Implemented on 2026-08-03 as the event-time closure slice:
 - Events are classified as `ON_TIME`, `LATE_ACCEPTED`, or `TOO_LATE` before rule evaluation.
 - Too-late events remain visible in Event Explorer but do not mutate rule state or queue webhook actions.
 - Producer responses and idempotent replays expose the event-time classification additively.
-- Idle-stream advancement, buffering, correction, retraction, and retroactive sequence reordering remain future work.
+- Idle advancement is implemented for routes used by active absence rules.
+- General buffering, correction, retraction, and retroactive sequence reordering remain future work.
+
+## Implemented: Absence Pattern Rules
+
+Implemented and manually verified on 2026-08-04 as the negative-pattern slice:
+
+- Added `ABSENCE` rules for a matching start event followed by no matching expected event within an event-time window.
+- Optional `groupBy` correlation keeps expectations independent by order, user, account, or another business key.
+- Pending expectations survive restarts and become satisfied, triggered, or lifecycle-cancelled deterministically.
+- Idle expected-stream watermarks advance using the configured allowed-lateness policy so missing events eventually resolve.
+- Delayed matches use the existing cooldown and durable webhook outbox without rewriting stored producer responses.
+- Rule testing remains side-effect free, and Event Explorer shows absence progress and eventual outcomes.
+
+Plan: [`2026-08-04-1123-absence-patterns-plan.md`](2026-08-04-1123-absence-patterns-plan.md)
+
+## Next Planned Sequence
+
+1. [Replay and backfill job MVP](2026-08-04-1244-replay-backfill-job-mvp-plan.md) — safely evaluate stored events against one immutable rule revision with isolated state and no live actions.
+2. [Kafka connector MVP](2026-08-04-1244-kafka-connector-mvp-plan.md) — add optional broker ingestion with durable message deduplication and commit-after-database semantics.
+3. [Replay job controls and history](2026-08-04-1244-replay-job-controls-history-plan.md) — add pause, resume, cancellation, retry, searchable history, and transition auditing.
 
 ## Later Assessment Roadmap
 
 1. Rule lifecycle/versioning and audit history — implemented with revision-scoped aggregate/trigger state, immutable snapshots, archive/unarchive, restore, and stale-write protection.
-2. Absence patterns — not implemented; negative conditions and absence timers remain future work.
-3. Watermarks and allowed lateness — implemented: durable source/type watermarks, a configurable five-minute grace period, late-event classification, and too-late side-effect suppression are available; idle-stream advancement and late-event correction/retraction remain future work.
-4. Broker connectors and replay/backfill — not implemented; ingestion currently uses the HTTP event API and idempotency replay is not historical backfill.
+2. Absence patterns — implemented with durable grouped expectations, event-time deadlines, idle-route watermark advancement, webhook integration, and Event Explorer visibility.
+3. Watermarks and allowed lateness — implemented: durable source/type watermarks, a configurable five-minute grace period, late-event classification, too-late side-effect suppression, and absence-route idle advancement are available; correction and retraction remain future work.
+4. Broker connectors and replay/backfill — planned in the three slices above; ingestion currently uses the HTTP event API, and idempotency response replay is not historical event re-evaluation.
 5. Event API response controls — implemented: new API keys default to compact producer responses, full responses remain available by choice, and successful responses expose an explicit `X-Idempotency-Replayed` header.

@@ -8,7 +8,7 @@ import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.entity.RuleEvent;
 import com.tengencorp.tengen.repository.RuleEventRepository;
 import com.tengencorp.tengen.entity.RuleType;
-import com.tengencorp.tengen.helper.AggregateFieldPath;
+import com.tengencorp.tengen.helper.RuleEvaluationSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -16,7 +16,6 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -30,8 +29,6 @@ import java.util.Map;
 public class RuleEngine {
 
     private static final Logger log = LoggerFactory.getLogger(RuleEngine.class);
-    private static final int MAX_GROUP_KEY_LENGTH = 500;
-
     private final AviatorEvaluatorInstance aviator;
     private final RuleEventRepository ruleEventRepository;
     private final SequenceRuleService sequenceRuleService;
@@ -99,7 +96,7 @@ public class RuleEngine {
                 eventDataErrors.increment();
                 return new RuleEvaluation(true, null, null);
             }
-            if (usesGrouping(rule) && groupKey.length() > MAX_GROUP_KEY_LENGTH) {
+            if (usesGrouping(rule) && groupKey.length() > RuleEvaluationSupport.MAX_GROUP_KEY_LENGTH) {
                 log.warn("Aggregate rule skipped because the group key is too long: ruleId={}, eventId={}",
                     rule.getId(), event.getId());
                 eventDataErrors.increment();
@@ -143,35 +140,22 @@ public class RuleEngine {
     }
 
     private Map<String, Object> buildEnv(Event event) {
-        Map<String, Object> env = new HashMap<>();
-        env.put("type", event.getType());
-        env.put("source", event.getSource());
-        env.put("timestamp", event.getOccurredAt());
-        env.put("data", event.getData());
-        return env;
+        return RuleEvaluationSupport.buildEnvironment(
+            event.getType(), event.getSource(), event.getOccurredAt(), event.getData());
     }
 
     private Double extractNumericValue(Event event, String aggField) {
         if (aggField == null || aggField.isBlank()) {
             return null;
         }
-        Object value = resolvePath(event.getData(), aggField);
-        if (value instanceof Number n) {
-            return n.doubleValue();
-        }
-        return null;
+        return RuleEvaluationSupport.extractNumericValue(event.getData(), aggField);
     }
 
     private String extractGroupKey(Event event, Rule rule) {
         if (!usesGrouping(rule)) {
             return null;
         }
-        Object value = resolvePath(event.getData(), rule.getGroupBy());
-        if (value == null || value instanceof Map<?, ?>) {
-            return null;
-        }
-        String groupKey = String.valueOf(value).trim();
-        return groupKey.isBlank() ? null : groupKey;
+        return RuleEvaluationSupport.extractGroupKey(event.getData(), rule.getGroupBy());
     }
 
     private boolean usesGrouping(Rule rule) {
@@ -182,19 +166,7 @@ public class RuleEngine {
      * Resolve a dotted path like {@code data.amount} or {@code amount} against the event map.
      */
     static Object resolvePath(Map<String, Object> map, String path) {
-        Object current = map;
-        String normalizedPath = AggregateFieldPath.normalize(path);
-        if (normalizedPath == null || normalizedPath.isBlank()) {
-            return null;
-        }
-        for (String part : normalizedPath.split("\\.")) {
-            if (current instanceof Map<?, ?> m) {
-                current = m.get(part);
-            } else {
-                return null;
-            }
-        }
-        return current;
+        return RuleEvaluationSupport.resolvePath(map, path);
     }
 
     private double aggregate(Rule rule, Instant occurredAt, boolean includeCandidate,
