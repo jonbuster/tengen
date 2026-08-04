@@ -335,9 +335,16 @@ The development defaults work with the included Docker Compose database. Expand 
 | `WEBHOOK_WORKER_LEASE_DURATION_MS` | `300000` | Claim lease used for restart recovery. |
 | `WEBHOOK_WORKER_CONNECT_TIMEOUT_MS` / `WEBHOOK_WORKER_READ_TIMEOUT_MS` | `3000` / `5000` | Callback connection and response timeouts. |
 | `WEBHOOK_SIGNING_SECRET` | development-only value | HMAC secret used to authenticate webhook deliveries. |
+| `TENGEN_ABSENCE_WORKER_ENABLED` | `true` | Enable automatic absence-window evaluation. |
+| `TENGEN_ABSENCE_WORKER_POLL_INTERVAL_MS` / `TENGEN_ABSENCE_WORKER_INITIAL_DELAY_MS` | `1000` / `1000` | Absence-worker polling and startup delays. |
+| `TENGEN_ABSENCE_WORKER_BATCH_SIZE` | `100` | Maximum absence instances processed per poll. |
+| `RULE_MAX_EXPRESSION_LENGTH` | `10000` | Maximum rule expression length. |
 | `INGESTION_MAX_BODY_BYTES` | `1048576` | Maximum event request size, including chunked bodies. |
 | `INGESTION_RATE_LIMIT_PER_MINUTE` | `600` | Per-API-key limit for the initial single-instance deployment. |
+| `INGESTION_MAX_FUTURE_SKEW_SECONDS` | `300` | Maximum allowed event timestamp skew into the future. |
 | `INGESTION_ALLOWED_LATENESS_SECONDS` | `300` | Event-time grace period for out-of-order events. Events at or before the durable watermark are retained but are not evaluated. |
+| `LOGIN_MAX_ATTEMPTS` / `LOGIN_WINDOW_SECONDS` | `5` / `60` | Login throttling threshold and window. |
+| `REFRESH_REPLAY_GRACE_SECONDS` | `2` | Grace period for refresh-token replay handling. |
 | `RETENTION_ENABLED` / `RETENTION_DAYS` | `true` / `90` | Terminal operational-data cleanup policy. Rule revisions are never removed. |
 | `RETENTION_BATCH_SIZE` / `RETENTION_SCHEDULE` | `1000` / `0 15 3 * * *` | Bounded cleanup batch and UTC cron schedule. |
 
