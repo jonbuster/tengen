@@ -71,6 +71,14 @@ public class RetentionService {
                 WHERE status IN ('DELIVERED', 'DEAD_LETTER') AND created_at < ? LIMIT ?
             )
             """, cutoff));
+        deleted.put("replay_jobs", drain("""
+            DELETE FROM replay_jobs WHERE id IN (
+                SELECT id FROM replay_jobs
+                WHERE status IN ('COMPLETED', 'CANCELLED')
+                  AND COALESCE(completed_at, updated_at) < ?
+                LIMIT ?
+            )
+            """, cutoff));
         deleted.put("rule_events", drain("""
             DELETE FROM rule_events WHERE id IN (
                 SELECT id FROM rule_events WHERE occurred_at < ? LIMIT ?

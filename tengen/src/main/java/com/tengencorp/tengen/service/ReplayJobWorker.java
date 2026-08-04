@@ -22,6 +22,7 @@ public class ReplayJobWorker {
     private final Counter jobsFailed;
     private final Counter matchedResults;
     private final Counter evaluationErrors;
+    private final Counter leasesRecovered;
 
     public ReplayJobWorker(ReplayJobJdbcRepository jdbcRepository,
                            ReplayJobBatchService batchService,
@@ -48,6 +49,9 @@ public class ReplayJobWorker {
         this.evaluationErrors = Counter.builder("tengen.replay.results.evaluation.errors")
             .description("Replay outcomes with evaluation errors")
             .register(meterRegistry);
+        this.leasesRecovered = Counter.builder("tengen.replay.leases.recovered")
+            .description("Replay leases recovered after expiry")
+            .register(meterRegistry);
     }
 
     @Scheduled(
@@ -58,6 +62,8 @@ public class ReplayJobWorker {
     }
 
     public void runOnce() {
+        int recoveredControls = jdbcRepository.recoverExpiredRequestedControls();
+        leasesRecovered.increment(recoveredControls);
         Optional<ReplayJobJdbcRepository.ReplayJobLease> claimed = jdbcRepository.claimOldest(
             properties.getWorker().getLeaseDurationMs());
         if (claimed.isEmpty()) {
@@ -65,23 +71,34 @@ public class ReplayJobWorker {
         }
 
         ReplayJobJdbcRepository.ReplayJobLease lease = claimed.get();
+        if (lease.recovered()) {
+            leasesRecovered.increment();
+        }
         try {
             while (true) {
                 ReplayJobBatchService.ReplayBatchResult result = batchService.processBatch(
                     lease.jobId(), lease.leaseToken());
                 matchedResults.increment(result.matchedEvents());
                 evaluationErrors.increment(result.errorEvents());
+                if (result.controlRequested()) {
+                    jdbcRepository.applyRequestedControl(lease.jobId(), lease.leaseToken());
+                    return;
+                }
                 if (result.completed() || !result.progressMade()) {
                     if (result.completed()) {
                         jobsCompleted.increment();
                     }
                     return;
                 }
+                if (jdbcRepository.applyRequestedControl(lease.jobId(), lease.leaseToken())) {
+                    return;
+                }
             }
         } catch (RuntimeException exception) {
-            jdbcRepository.markFailed(
-                lease.jobId(), lease.leaseToken(), "WORKER_ERROR", safeFailure(exception));
-            jobsFailed.increment();
+            if (jdbcRepository.markFailed(
+                lease.jobId(), lease.leaseToken(), "WORKER_ERROR", safeFailure(exception))) {
+                jobsFailed.increment();
+            }
         }
     }
 

@@ -1,6 +1,6 @@
 # Replay Job Controls and History Plan
 
-## Status: Planned - 2026-08-04 12:44 PHT
+## Status: Implemented - 2026-08-04 18:53 PHT
 
 ## Recommendation
 
@@ -140,7 +140,8 @@ rewriting it.
 ## Data Model
 
 Use the next available Flyway migration. If the preceding plans are implemented
-in order, this is expected to be `V12__replay_job_controls.sql`.
+in order, this is `V13__replay_job_controls.sql` because V12 is already used by
+the accent-color migration.
 
 ### Extend `replay_jobs`
 

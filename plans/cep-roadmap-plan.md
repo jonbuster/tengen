@@ -296,6 +296,17 @@ Implemented on 2026-08-04 as an isolated historical-analysis slice:
 
 Plan: [`2026-08-04-1244-replay-backfill-job-mvp-plan.md`](2026-08-04-1244-replay-backfill-job-mvp-plan.md)
 
+## Implemented: Replay Job Controls and History
+
+Implemented on 2026-08-04 as the operational follow-up to the replay MVP:
+
+- Added cooperative pause, resume, cancellation, and safe retry controls that preserve committed checkpoints and never send live webhooks.
+- Added server-paginated, filterable replay history with ETag-protected mutations and state-aware admin controls.
+- Added immutable transition auditing for admin actions, worker claims, lease recovery, failures, completion, pause, and cancellation.
+- Added optional active-job refresh, transition/outcome detail views, bounded operational metrics, and terminal replay retention using the global retention window.
+
+Plan: [`2026-08-04-1244-replay-job-controls-history-plan.md`](2026-08-04-1244-replay-job-controls-history-plan.md)
+
 ## Implemented: RabbitMQ Connector with Admin UI MVP
 
 Implemented on 2026-08-04 as the optional broker-ingestion slice:
@@ -320,11 +331,7 @@ Plan: [`2026-08-04-1515-rabbitmq-connector-ui-mvp-plan.md`](2026-08-04-1515-rabb
 
 ## Next Planned Sequence
 
-1. [Replay job controls and history](2026-08-04-1244-replay-job-controls-history-plan.md) — add pause, resume, cancellation, retry, searchable history, and transition auditing.
-
-## Planned but Unscheduled
-
-- [Spring Boot failure and audit logging](2026-08-04-1025-spring-boot-logging-plan.md) — operational logging hardening that is not currently part of the ordered CEP feature sequence.
+1. [Spring Boot failure and audit logging](2026-08-04-1025-spring-boot-logging-plan.md) — harden structured failure and request audit logging across the service.
 
 ## Later Assessment Roadmap
 

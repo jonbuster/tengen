@@ -23,7 +23,10 @@ import java.util.Map;
 
 @Entity
 @Table(name = "replay_jobs", indexes = {
-    @Index(name = "idx_replay_jobs_status_created", columnList = "status, created_at, id")
+    @Index(name = "idx_replay_jobs_status_created", columnList = "status, created_at, id"),
+    @Index(name = "idx_replay_jobs_status_updated", columnList = "status, updated_at, id"),
+    @Index(name = "idx_replay_jobs_rule_revision_created", columnList = "rule_id, rule_revision, created_at, id"),
+    @Index(name = "idx_replay_jobs_created_by_created", columnList = "created_by, created_at, id")
 })
 @Getter
 @Setter
@@ -86,6 +89,12 @@ public class ReplayJob {
     @Column(name = "error_events", nullable = false)
     private long errorEvents;
 
+    @Column(name = "attempt_count", nullable = false)
+    private int attemptCount;
+
+    @Column(name = "retryable", nullable = false)
+    private boolean retryable;
+
     @Column(name = "last_committed_position")
     private Long lastCommittedPosition;
 
@@ -110,6 +119,15 @@ public class ReplayJob {
     @Column(name = "completed_at")
     private Instant completedAt;
 
+    @Column(name = "paused_at")
+    private Instant pausedAt;
+
+    @Column(name = "cancelled_at")
+    private Instant cancelledAt;
+
+    @Column(name = "last_retried_at")
+    private Instant lastRetriedAt;
+
     @Column(name = "failure_category", length = 80)
     private String failureCategory;
 
@@ -130,6 +148,9 @@ public class ReplayJob {
         }
         if (actionMode == null) {
             actionMode = ReplayActionMode.NO_ACTIONS;
+        }
+        if (attemptCount < 0) {
+            attemptCount = 0;
         }
         if (version == null) {
             version = 0;

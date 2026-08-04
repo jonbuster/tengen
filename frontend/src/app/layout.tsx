@@ -82,6 +82,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                         >
                           jonbuster
                         </Link>
+                        <Box
+                          component="span"
+                          role="img"
+                          aria-label="Philippine flag"
+                          sx={{ ml: 0.5, fontSize: "0.9em" }}
+                        >
+                          🇵🇭
+                        </Box>
                       </Typography>
                     )}
                   </Box>

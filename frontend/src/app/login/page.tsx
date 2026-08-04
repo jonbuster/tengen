@@ -98,6 +98,9 @@ export default function LoginPage() {
         >
           jonbuster
         </Link>
+        <Box component="span" role="img" aria-label="Philippine flag" sx={{ ml: 0.5, fontSize: "0.9em" }}>
+          🇵🇭
+        </Box>
       </Typography>
     </Box>
   );

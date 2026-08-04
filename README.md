@@ -48,7 +48,7 @@ An accepted event response reports which rules matched, which webhook actions we
 | **API Keys** | Create scoped ingestion keys, view their status, and revoke them. Raw keys are shown only once. |
 | **Deliveries** | Filter webhook history, inspect attempts and errors, refresh the list, and retry dead-lettered deliveries. |
 | **Events** | Search accepted events, inspect their payloads, review matched-rule outcomes, and follow webhook deliveries. |
-| **Replays** | Run bounded, analysis-only evaluations against immutable CONDITION or AGGREGATE rule revisions. |
+| **Replays** | Run bounded, analysis-only evaluations against immutable CONDITION or AGGREGATE rule revisions; monitor, pause, resume, cancel, retry, search history, and inspect transition audits. |
 | **Connectors · RabbitMQ** | Save, test, enable, disable, and monitor one backend-managed RabbitMQ queue consumer. |
 
 Delivery auto-refresh is off by default. It can be enabled when a near-real-time view of active deliveries is useful.
@@ -395,7 +395,7 @@ flowchart LR
 | `/api/rules/**` | Admin session | Manage, test, archive, restore, and inspect rule revisions. |
 | `/api/keys/**` | Admin session | Manage ingestion API keys. |
 | `/api/webhook-deliveries/**` | Admin session | Search delivery history, inspect details, and retry dead-lettered work. |
-| `/api/replay-jobs/**` | Admin session | Create analysis-only replay jobs and read their progress and outcomes. |
+| `/api/replay-jobs/**` | Admin session | Create, control, search, and inspect analysis-only replay jobs, outcomes, and transition history. |
 | `/api/connectors/rabbitmq/**` | Admin session | Configure, test, enable, disable, and inspect the RabbitMQ connector. |
 
 Admin access and refresh tokens are stored in httpOnly cookies, so client-side JavaScript does not read them. API keys are stored as hashes and the raw value is available only when a key is created.
@@ -403,9 +403,11 @@ Admin access and refresh tokens are stored in httpOnly cookies, so client-side J
 Historical replay jobs read immutable event copies and never send webhooks or
 change live rule state, watermarks, event traces, or delivery records. The MVP
 supports one rule revision at a time, with an inclusive start and exclusive end
-event-time range. Replay inputs and results remain durable until a later
-controls/history feature defines cleanup; keep the event cap conservative for
-storage planning.
+event-time range. Pause, resume, cancel, and retry affect only replay analysis;
+retry resumes from the last committed checkpoint and does not retrigger live
+events. Completed and cancelled jobs, including copied payloads and outcomes,
+are removed by the global retention policy (90 days by default); failed jobs are
+kept for investigation or retry.
 
 ## Configuration
 
@@ -512,16 +514,18 @@ docker compose --env-file .env -f tengen/docker-compose.yml up -d --build fronte
 
 The durable webhook outbox, background delivery worker, automatic retries,
 dead-letter handling, delivery-history console, watermarks, absence patterns,
-analysis-only replay jobs, and the optional RabbitMQ connector are implemented.
+analysis-only replay jobs with operational controls/history, and the optional
+RabbitMQ connector are implemented.
 
-The next planned sequence adds replay-job controls and history. See the
+The next planned sequence adds Spring Boot failure and audit logging. See the
 [CEP roadmap](plans/cep-roadmap-plan.md) for completed work and ordering.
 
 Detailed roadmap plans:
 
 - Implemented: [Replay and backfill job MVP](plans/2026-08-04-1244-replay-backfill-job-mvp-plan.md)
+- Implemented: [Replay job controls and history](plans/2026-08-04-1244-replay-job-controls-history-plan.md)
 - Implemented: [RabbitMQ connector with admin UI MVP](plans/2026-08-04-1515-rabbitmq-connector-ui-mvp-plan.md)
-- Next: [Replay job controls and history](plans/2026-08-04-1244-replay-job-controls-history-plan.md)
+- Next: [Spring Boot failure and audit logging](plans/2026-08-04-1025-spring-boot-logging-plan.md)
 
 Planned but not currently scheduled:
 

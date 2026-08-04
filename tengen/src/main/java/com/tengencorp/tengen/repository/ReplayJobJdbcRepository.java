@@ -8,6 +8,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 import java.sql.Types;
@@ -101,48 +102,74 @@ public class ReplayJobJdbcRepository {
             .addValue("jobId", materialization.jobId()));
     }
 
+    @Transactional
     public Optional<ReplayJobLease> claimOldest(long leaseDurationMs) {
         String token = UUID.randomUUID().toString();
-        String sql = """
-            update replay_jobs job
+        List<ClaimCandidate> candidates = jdbcTemplate.query("""
+            select id, status, attempt_count
+              from replay_jobs
+             where status = 'QUEUED'
+                or (status = 'RUNNING'
+                    and (lease_expires_at is null or lease_expires_at <= now()))
+             order by created_at, id
+             for update skip locked
+             limit 1
+            """, (resultSet, rowNumber) -> new ClaimCandidate(
+                resultSet.getLong("id"),
+                ReplayJobStatus.valueOf(resultSet.getString("status")),
+                resultSet.getInt("attempt_count")));
+        if (candidates.isEmpty()) {
+            return Optional.empty();
+        }
+
+        ClaimCandidate candidate = candidates.get(0);
+        List<ReplayJobLease> claimed = jdbcTemplate.query("""
+            update replay_jobs
                set status = 'RUNNING',
                    lease_token = ?,
                    lease_expires_at = now() + (? * interval '1 millisecond'),
                    started_at = coalesce(started_at, now()),
+                   attempt_count = attempt_count + 1,
                    updated_at = now(),
                    version = version + 1
-             where job.id = (
-                 select candidate.id
-                   from replay_jobs candidate
-                  where candidate.status = 'QUEUED'
-                     or (candidate.status = 'RUNNING'
-                         and (candidate.lease_expires_at is null
-                              or candidate.lease_expires_at <= now()))
-                  order by candidate.created_at, candidate.id
-                  for update skip locked
-                  limit 1
-             )
-            returning job.id, job.lease_token
-            """;
-        List<ReplayJobLease> claimed = jdbcTemplate.query(sql, (resultSet, rowNumber) ->
-            new ReplayJobLease(resultSet.getLong("id"), resultSet.getString("lease_token")),
-            token, leaseDurationMs);
-        return claimed.stream().findFirst();
+             where id = ? and status = ?
+            returning id, lease_token, attempt_count
+            """, (resultSet, rowNumber) -> new ReplayJobLease(
+                resultSet.getLong("id"),
+                resultSet.getString("lease_token"),
+                resultSet.getInt("attempt_count"),
+                candidate.status() == ReplayJobStatus.RUNNING),
+            token, leaseDurationMs, candidate.id(), candidate.status().name());
+        if (claimed.isEmpty()) {
+            return Optional.empty();
+        }
+
+        ReplayJobLease lease = claimed.get(0);
+        if (candidate.status() == ReplayJobStatus.RUNNING) {
+            insertTransition(candidate.id(), ReplayJobStatus.RUNNING, ReplayJobStatus.RUNNING,
+                "LEASE_RECOVERED", lease.attemptCount(), "LEASE_EXPIRED");
+        }
+        insertTransition(candidate.id(), candidate.status(), ReplayJobStatus.RUNNING,
+            "CLAIMED", lease.attemptCount(), null);
+        return Optional.of(lease);
     }
 
     public Optional<ReplayWorkerJob> findWorkerJob(Long jobId, String leaseToken) {
         String sql = """
-            select id, rule_revision, snapshot_schema_version, rule_snapshot,
+            select id, status, rule_revision, snapshot_schema_version, rule_snapshot,
                    occurred_from, occurred_to, warmup_from, action_mode,
                    total_output_events, total_materialized_events,
                    processed_output_events, matched_events, error_events,
                    last_committed_position
               from replay_jobs
-             where id = ? and status = 'RUNNING' and lease_token = ?
+             where id = ?
+               and status in ('RUNNING', 'PAUSE_REQUESTED', 'CANCEL_REQUESTED')
+               and lease_token = ?
             """;
         List<ReplayWorkerJob> jobs = jdbcTemplate.query(sql, (resultSet, rowNumber) ->
             new ReplayWorkerJob(
                 resultSet.getLong("id"),
+                ReplayJobStatus.valueOf(resultSet.getString("status")),
                 resultSet.getInt("rule_revision"),
                 resultSet.getInt("snapshot_schema_version"),
                 objectMapper.readValue(resultSet.getString("rule_snapshot"), Map.class),
@@ -269,44 +296,61 @@ public class ReplayJobJdbcRepository {
             .addValue("completedAt", timestamp(outcome.completedAt()), Types.TIMESTAMP));
     }
 
-    public void updateProgress(Long jobId, String leaseToken, long lastPosition,
-                               long processedOutputEvents, long matchedEvents, long errorEvents,
-                               boolean completed, long leaseDurationMs) {
+    @Transactional
+    public ReplayProgressUpdate updateProgress(Long jobId, String leaseToken, long lastPosition,
+                                               long processedOutputEvents, long matchedEvents,
+                                               long errorEvents, boolean completed,
+                                               long leaseDurationMs) {
         String sql = """
             update replay_jobs
-               set status = :status,
+               set status = case when :completed and status = 'RUNNING'
+                                 then 'COMPLETED' else status end,
                    processed_output_events = :processedOutputEvents,
                    matched_events = :matchedEvents,
                    error_events = :errorEvents,
                    last_committed_position = :lastPosition,
-                   lease_expires_at = case when :completed then null
+                   lease_expires_at = case when :completed and status = 'RUNNING' then null
                        else now() + (:leaseDurationMs * interval '1 millisecond') end,
-                   completed_at = case when :completed then now() else completed_at end,
+                   completed_at = case when :completed and status = 'RUNNING'
+                                      then now() else completed_at end,
                    updated_at = now(),
                    version = version + 1
-             where id = :jobId and status = 'RUNNING' and lease_token = :leaseToken
+             where id = :jobId
+               and status in ('RUNNING', 'PAUSE_REQUESTED', 'CANCEL_REQUESTED')
+               and lease_token = :leaseToken
+            returning status
             """;
-        int updated = namedJdbcTemplate.update(sql, new MapSqlParameterSource()
+        List<ReplayProgressUpdate> updates = namedJdbcTemplate.query(sql, new MapSqlParameterSource()
             .addValue("jobId", jobId)
             .addValue("leaseToken", leaseToken)
-            .addValue("status", completed ? ReplayJobStatus.COMPLETED.name() : ReplayJobStatus.RUNNING.name())
             .addValue("lastPosition", lastPosition)
             .addValue("processedOutputEvents", processedOutputEvents)
             .addValue("matchedEvents", matchedEvents)
             .addValue("errorEvents", errorEvents)
             .addValue("completed", completed)
-            .addValue("leaseDurationMs", leaseDurationMs));
-        if (updated != 1) {
+            .addValue("leaseDurationMs", leaseDurationMs), (resultSet, rowNumber) ->
+                new ReplayProgressUpdate(ReplayJobStatus.valueOf(resultSet.getString("status"))));
+        if (updates.isEmpty()) {
             throw new IllegalStateException("Replay job lease is no longer owned");
         }
+        ReplayProgressUpdate progress = updates.get(0);
+        if (progress.status() == ReplayJobStatus.COMPLETED) {
+            Integer attemptCount = jdbcTemplate.queryForObject(
+                "select attempt_count from replay_jobs where id = ?", Integer.class, jobId);
+            insertTransition(jobId, ReplayJobStatus.RUNNING, ReplayJobStatus.COMPLETED,
+                "COMPLETED", attemptCount != null ? attemptCount : 0, null);
+        }
+        return progress;
     }
 
-    public void markFailed(Long jobId, String leaseToken, String category, String message) {
-        jdbcTemplate.update("""
+    @Transactional
+    public boolean markFailed(Long jobId, String leaseToken, String category, String message) {
+        int updated = jdbcTemplate.update("""
             update replay_jobs
                set status = 'FAILED',
                    failure_category = ?,
                    failure_message = ?,
+                   retryable = true,
                    completed_at = now(),
                    updated_at = now(),
                    lease_token = null,
@@ -314,6 +358,90 @@ public class ReplayJobJdbcRepository {
                    version = version + 1
              where id = ? and status = 'RUNNING' and lease_token = ?
             """, category, message, jobId, leaseToken);
+        if (updated != 1) {
+            return false;
+        }
+        Integer attemptCount = jdbcTemplate.queryForObject(
+            "select attempt_count from replay_jobs where id = ?", Integer.class, jobId);
+        insertTransition(jobId, ReplayJobStatus.RUNNING, ReplayJobStatus.FAILED,
+            "FAILED", attemptCount != null ? attemptCount : 0, category);
+        return true;
+    }
+
+    @Transactional
+    public boolean applyRequestedControl(Long jobId, String leaseToken) {
+        List<RequestedControl> controls = jdbcTemplate.query("""
+            select status, attempt_count
+              from replay_jobs
+             where id = ?
+               and lease_token = ?
+               and status in ('PAUSE_REQUESTED', 'CANCEL_REQUESTED')
+             for update
+            """, (resultSet, rowNumber) -> new RequestedControl(
+                ReplayJobStatus.valueOf(resultSet.getString("status")),
+                resultSet.getInt("attempt_count")), jobId, leaseToken);
+        if (controls.isEmpty()) {
+            return false;
+        }
+        RequestedControl control = controls.get(0);
+        ReplayJobStatus next = control.status() == ReplayJobStatus.PAUSE_REQUESTED
+            ? ReplayJobStatus.PAUSED : ReplayJobStatus.CANCELLED;
+        jdbcTemplate.update("""
+            update replay_jobs
+               set status = ?,
+                   paused_at = case when ? = 'PAUSED' then now() else paused_at end,
+                   cancelled_at = case when ? = 'CANCELLED' then now() else cancelled_at end,
+                   completed_at = case when ? = 'CANCELLED' then now() else completed_at end,
+                   retryable = case when ? = 'CANCELLED' then false else retryable end,
+                   lease_token = null,
+                   lease_expires_at = null,
+                   updated_at = now(),
+                   version = version + 1
+             where id = ? and lease_token = ? and status = ?
+            """, next.name(), next.name(), next.name(), next.name(), next.name(),
+            jobId, leaseToken, control.status().name());
+        insertTransition(jobId, control.status(), next,
+            next == ReplayJobStatus.PAUSED ? "PAUSED" : "CANCELLED",
+            control.attemptCount(), null);
+        return true;
+    }
+
+    @Transactional
+    public int recoverExpiredRequestedControls() {
+        List<ExpiredControl> controls = jdbcTemplate.query("""
+            select id, status, attempt_count
+              from replay_jobs
+             where status in ('PAUSE_REQUESTED', 'CANCEL_REQUESTED')
+               and lease_expires_at is not null
+               and lease_expires_at <= now()
+             order by id
+             for update skip locked
+            """, (resultSet, rowNumber) -> new ExpiredControl(
+                resultSet.getLong("id"),
+                ReplayJobStatus.valueOf(resultSet.getString("status")),
+                resultSet.getInt("attempt_count")));
+        for (ExpiredControl control : controls) {
+            ReplayJobStatus next = control.status() == ReplayJobStatus.PAUSE_REQUESTED
+                ? ReplayJobStatus.PAUSED : ReplayJobStatus.CANCELLED;
+            jdbcTemplate.update("""
+                update replay_jobs
+                   set status = ?,
+                       paused_at = case when ? = 'PAUSED' then now() else paused_at end,
+                       cancelled_at = case when ? = 'CANCELLED' then now() else cancelled_at end,
+                       completed_at = case when ? = 'CANCELLED' then now() else completed_at end,
+                       retryable = case when ? = 'CANCELLED' then false else retryable end,
+                       lease_token = null,
+                       lease_expires_at = null,
+                       updated_at = now(),
+                       version = version + 1
+                 where id = ? and status = ?
+                """, next.name(), next.name(), next.name(), next.name(), next.name(),
+                control.id(), control.status().name());
+            insertTransition(control.id(), control.status(), next,
+                next == ReplayJobStatus.PAUSED ? "PAUSED" : "CANCELLED",
+                control.attemptCount(), "LEASE_RECOVERED");
+        }
+        return controls.size();
     }
 
     public long countByStatus(String status) {
@@ -356,19 +484,49 @@ public class ReplayJobJdbcRepository {
         return value == null ? null : EventTimeStatus.valueOf(value);
     }
 
+    private void insertTransition(Long jobId, ReplayJobStatus fromStatus,
+                                  ReplayJobStatus toStatus, String action,
+                                  int attemptCount, String reason) {
+        jdbcTemplate.update("""
+            insert into replay_job_transitions (
+                job_id, transition_sequence, from_status, to_status, action,
+                actor, attempt_count, reason, transitioned_at
+            )
+            select ?, coalesce(max(transition_sequence), 0) + 1, ?, ?, ?,
+                   'system', ?, ?, now()
+              from replay_job_transitions
+             where job_id = ?
+            """, jobId, fromStatus != null ? fromStatus.name() : null, toStatus.name(),
+            action, attemptCount, reason, jobId);
+    }
+
     public record ReplayMaterialization(Long jobId, Instant warmupFrom, Instant occurredFrom,
                                         Instant occurredTo, Long apiKeyId, RuleSnapshot snapshot) {
     }
 
-    public record ReplayJobLease(Long jobId, String leaseToken) {
+    public record ReplayJobLease(Long jobId, String leaseToken, int attemptCount,
+                                 boolean recovered) {
     }
 
-    public record ReplayWorkerJob(Long id, int ruleRevision, int snapshotSchemaVersion,
+    public record ReplayWorkerJob(Long id, ReplayJobStatus status, int ruleRevision,
+                                  int snapshotSchemaVersion,
                                   Map<String, Object> ruleSnapshot, Instant occurredFrom,
                                   Instant occurredTo, Instant warmupFrom, String actionMode,
                                   long totalOutputEvents, long totalMaterializedEvents,
                                   long processedOutputEvents, long matchedEvents,
                                   long errorEvents, Long lastCommittedPosition) {
+    }
+
+    public record ReplayProgressUpdate(ReplayJobStatus status) {
+    }
+
+    private record ClaimCandidate(Long id, ReplayJobStatus status, int attemptCount) {
+    }
+
+    private record RequestedControl(ReplayJobStatus status, int attemptCount) {
+    }
+
+    private record ExpiredControl(Long id, ReplayJobStatus status, int attemptCount) {
     }
 
     public record ReplayInput(Long jobId, long position, Long originalEventId, String type,

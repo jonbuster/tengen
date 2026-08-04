@@ -107,7 +107,15 @@ export interface RuleRevisionDetail {
   snapshot: RuleSnapshot;
 }
 
-export type ReplayJobStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+export type ReplayJobStatus =
+  | "QUEUED"
+  | "RUNNING"
+  | "PAUSE_REQUESTED"
+  | "PAUSED"
+  | "CANCEL_REQUESTED"
+  | "CANCELLED"
+  | "COMPLETED"
+  | "FAILED";
 export type ReplayActionMode = "NO_ACTIONS";
 
 export interface ReplayJob {
@@ -128,15 +136,42 @@ export interface ReplayJob {
   processedOutputEvents: number;
   matchedEvents: number;
   errorEvents: number;
+  version: number;
+  attemptCount: number;
+  retryable: boolean;
   progressPercentage: number;
   lastCommittedPosition: number | null;
+  leaseExpiresAt: string | null;
   createdBy: string;
   createdAt: string;
   startedAt: string | null;
   updatedAt: string;
   completedAt: string | null;
+  pausedAt: string | null;
+  cancelledAt: string | null;
+  lastRetriedAt: string | null;
   failureCategory: string | null;
   failureMessage: string | null;
+}
+
+export interface ReplayJobPage {
+  content: ReplayJob[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+}
+
+export interface ReplayJobTransition {
+  id: number;
+  sequence: number;
+  fromStatus: ReplayJobStatus | null;
+  toStatus: ReplayJobStatus;
+  action: string;
+  actor: string;
+  attemptCount: number;
+  reason: string | null;
+  transitionedAt: string;
 }
 
 export interface ReplayAggregateResult {

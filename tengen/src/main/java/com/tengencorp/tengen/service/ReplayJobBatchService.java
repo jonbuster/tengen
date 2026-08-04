@@ -34,6 +34,9 @@ public class ReplayJobBatchService {
         ReplayJobJdbcRepository.ReplayWorkerJob job = jdbcRepository
             .findWorkerJob(jobId, leaseToken)
             .orElseThrow(() -> new IllegalStateException("Replay job lease is no longer owned"));
+        if (job.status() != com.tengencorp.tengen.entity.ReplayJobStatus.RUNNING) {
+            return new ReplayBatchResult(false, false, 0, 0, true);
+        }
         RuleSnapshot snapshot = objectMapper.convertValue(job.ruleSnapshot(), RuleSnapshot.class);
         long afterPosition = job.lastCommittedPosition() != null
             ? job.lastCommittedPosition() : 0;
@@ -42,12 +45,15 @@ public class ReplayJobBatchService {
         if (inputs.isEmpty()) {
             boolean completed = afterPosition >= job.totalMaterializedEvents();
             if (completed) {
-                jdbcRepository.updateProgress(
+                ReplayJobJdbcRepository.ReplayProgressUpdate progress = jdbcRepository.updateProgress(
                     jobId, leaseToken, afterPosition, job.processedOutputEvents(),
                     job.matchedEvents(), job.errorEvents(), true,
                     properties.getWorker().getLeaseDurationMs());
+                return new ReplayBatchResult(
+                    progress.status() == com.tengencorp.tengen.entity.ReplayJobStatus.COMPLETED,
+                    false, 0, 0, isControlRequest(progress.status()));
             }
-            return new ReplayBatchResult(completed, false, 0, 0);
+            return new ReplayBatchResult(false, false, 0, 0, false);
         }
 
         long processedOutputEvents = job.processedOutputEvents();
@@ -90,13 +96,24 @@ public class ReplayJobBatchService {
         }
 
         boolean completed = lastPosition >= job.totalMaterializedEvents();
-        jdbcRepository.updateProgress(
+        ReplayJobJdbcRepository.ReplayProgressUpdate progress = jdbcRepository.updateProgress(
             jobId, leaseToken, lastPosition, processedOutputEvents, matchedEvents,
             errorEvents, completed, properties.getWorker().getLeaseDurationMs());
-        return new ReplayBatchResult(completed, true, batchMatched, batchErrors);
+        return new ReplayBatchResult(
+            progress.status() == com.tengencorp.tengen.entity.ReplayJobStatus.COMPLETED,
+            true,
+            batchMatched,
+            batchErrors,
+            isControlRequest(progress.status()));
     }
 
     public record ReplayBatchResult(boolean completed, boolean progressMade,
-                                    long matchedEvents, long errorEvents) {
+                                    long matchedEvents, long errorEvents,
+                                    boolean controlRequested) {
+    }
+
+    private boolean isControlRequest(com.tengencorp.tengen.entity.ReplayJobStatus status) {
+        return status == com.tengencorp.tengen.entity.ReplayJobStatus.PAUSE_REQUESTED
+            || status == com.tengencorp.tengen.entity.ReplayJobStatus.CANCEL_REQUESTED;
     }
 }
