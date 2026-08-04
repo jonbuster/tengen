@@ -4,8 +4,6 @@ import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
   Chip,
   CircularProgress,
   Collapse,
@@ -34,7 +32,7 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import ReplayIcon from "@mui/icons-material/Replay";
 import { type GridColDef, type GridPaginationModel } from "@mui/x-data-grid";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { api, errorMessage } from "@/lib/api";
 import { ClientDataGrid } from "@/components/ClientDataGrid";
 import { formatTimestamp } from "@/lib/formatters";
@@ -664,41 +662,60 @@ export default function ReplaysPage() {
         open={selectedId !== null}
         onClose={() => setSelectedId(null)}
         fullWidth
-        maxWidth="xl"
+        maxWidth="md"
       >
-        <DialogTitle>
-          {selectedJob ? `Replay job #${selectedJob.id}` : "Replay job"}
+        <DialogTitle sx={{ pb: 1.5 }}>
+          {selectedJob ? (
+            <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "center" }} gap={1}>
+              <Box sx={{ minWidth: 0 }}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <StatusChip status={selectedJob.status} />
+                  <Typography variant="h6" noWrap>{selectedJob.ruleName}</Typography>
+                </Stack>
+                <Typography variant="body2" color="text.secondary">
+                  Replay job #{selectedJob.id} · Rule {selectedJob.ruleId} · revision {selectedJob.ruleRevision} · {selectedJob.ruleType}
+                </Typography>
+              </Box>
+              <JobControls
+                job={selectedJob}
+                disabled={controlMutation.isPending}
+                onAction={requestControl}
+              />
+            </Stack>
+          ) : "Replay job"}
         </DialogTitle>
         <DialogContent dividers>
           {selectedJobQuery.isLoading && <CircularProgress />}
           {selectedJobQuery.error && <Alert severity="error">{errorMessage(selectedJobQuery.error)}</Alert>}
           {selectedJob && (
             <Stack spacing={2}>
-              <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" gap={1}>
-                <Box>
-                  <Typography variant="h6">{selectedJob.ruleName}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Rule {selectedJob.ruleId} · revision {selectedJob.ruleRevision} · {selectedJob.ruleType}
-                  </Typography>
-                </Box>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <StatusChip status={selectedJob.status} />
-                  <JobControls
-                    job={selectedJob}
-                    disabled={controlMutation.isPending}
-                    onAction={requestControl}
-                  />
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
+                  <Typography variant="subtitle1">Progress and results</Typography>
+                  <Chip label={`${selectedJob.progressPercentage.toFixed(0)}%`} size="small" color={selectedJob.status === "COMPLETED" ? "success" : "default"} />
                 </Stack>
-              </Stack>
+                <LinearProgress
+                  variant="determinate"
+                  value={selectedJob.progressPercentage}
+                  sx={{ height: 8, borderRadius: 4, mt: 1 }}
+                />
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  {selectedJob.processedOutputEvents.toLocaleString()} of {selectedJob.totalOutputEvents.toLocaleString()} output events processed.
+                </Typography>
+                <Box sx={{
+                  display: "grid",
+                  gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", sm: "repeat(5, minmax(0, 1fr))" },
+                  gap: 1,
+                  mt: 1.5,
+                }}>
+                  <SummaryCard label="Matched" value={selectedJob.matchedEvents} />
+                  <SummaryCard label="Evaluation errors" value={selectedJob.errorEvents} />
+                  <SummaryCard label="Materialized" value={selectedJob.totalMaterializedEvents} />
+                  <SummaryCard label="Attempt" value={selectedJob.attemptCount} />
+                  <SummaryCard label="Action mode" value={selectedJob.actionMode} />
+                </Box>
+              </Paper>
 
-              <LinearProgress
-                variant="determinate"
-                value={selectedJob.progressPercentage}
-                sx={{ height: 8, borderRadius: 4 }}
-              />
-              <Typography variant="body2" color="text.secondary">
-                {selectedJob.processedOutputEvents.toLocaleString()} of {selectedJob.totalOutputEvents.toLocaleString()} output events processed ({selectedJob.progressPercentage.toFixed(1)}%).
-              </Typography>
               {selectedJob.failureMessage && (
                 <Alert severity="error">
                   {selectedJob.failureCategory ? `${selectedJob.failureCategory}: ` : ""}{selectedJob.failureMessage}
@@ -706,82 +723,53 @@ export default function ReplaysPage() {
                 </Alert>
               )}
 
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-                <SummaryCard label="Matched" value={selectedJob.matchedEvents} />
-                <SummaryCard label="Evaluation errors" value={selectedJob.errorEvents} />
-                <SummaryCard label="Materialized" value={selectedJob.totalMaterializedEvents} />
-                <SummaryCard label="Attempt" value={selectedJob.attemptCount} />
-                <SummaryCard label="Action mode" value={selectedJob.actionMode} />
-              </Stack>
-
-              <Paper variant="outlined" sx={{ p: 2, bgcolor: "background.default" }}>
+              <Paper variant="outlined" sx={{ p: 2 }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="flex-start" gap={1}>
                   <Box>
-                    <Typography variant="subtitle1">Job settings</Typography>
+                    <Typography variant="subtitle1">Job overview</Typography>
                     <Typography variant="caption" color="text.secondary">
                       The replay request is immutable; lifecycle values are read-only status context.
                     </Typography>
                   </Box>
                   <Chip label="Immutable request" size="small" variant="outlined" />
                 </Stack>
-                <Stack spacing={2} sx={{ mt: 2 }}>
-                  <Box>
-                    <Typography variant="overline" color="text.secondary">Request</Typography>
-                    <Box sx={{
-                      display: "grid",
-                      gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", lg: "repeat(3, minmax(0, 1fr))" },
-                      gap: 1.25,
-                      mt: 0.5,
-                    }}>
-                      <DetailValue
-                        wide
-                        label="Occurred range"
-                        value={`${formatTimestamp(selectedJob.occurredFrom, preferences.timeDisplay)} → ${formatTimestamp(selectedJob.occurredTo, preferences.timeDisplay)}`}
-                      />
-                      <DetailValue label="Aggregate warmup" value={formatTimestamp(selectedJob.warmupFrom, preferences.timeDisplay)} />
-                      <DetailValue label="API-key filter" value={selectedJob.apiKeyId === null ? "All keys / legacy" : String(selectedJob.apiKeyId)} />
-                    </Box>
-                  </Box>
-                  <Box>
-                    <Typography variant="overline" color="text.secondary">Lifecycle</Typography>
-                    <Box sx={{
-                      display: "grid",
-                      gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", lg: "repeat(3, minmax(0, 1fr))" },
-                      gap: 1.25,
-                      mt: 0.5,
-                    }}>
-                      <DetailValue label="Created by" value={selectedJob.createdBy} />
-                      <DetailValue label="Created" value={formatTimestamp(selectedJob.createdAt, preferences.timeDisplay)} />
-                      <DetailValue label="Started" value={formatTimestamp(selectedJob.startedAt, preferences.timeDisplay)} />
-                      <DetailValue label="Lease expires" value={formatTimestamp(selectedJob.leaseExpiresAt, preferences.timeDisplay)} />
-                      <DetailValue label="Updated" value={formatTimestamp(selectedJob.updatedAt, preferences.timeDisplay)} />
-                      <DetailValue label="Completed" value={formatTimestamp(selectedJob.completedAt, preferences.timeDisplay)} />
-                      <DetailValue label="Paused" value={formatTimestamp(selectedJob.pausedAt, preferences.timeDisplay)} />
-                      <DetailValue label="Cancelled" value={formatTimestamp(selectedJob.cancelledAt, preferences.timeDisplay)} />
-                      <DetailValue label="Last checkpoint" value={selectedJob.lastCommittedPosition === null ? "Not started" : String(selectedJob.lastCommittedPosition)} />
-                    </Box>
-                  </Box>
-                </Stack>
+                <InfoGrid>
+                  <InfoField
+                    wide
+                    label="Occurred range"
+                    value={`${formatTimestamp(selectedJob.occurredFrom, preferences.timeDisplay)} → ${formatTimestamp(selectedJob.occurredTo, preferences.timeDisplay)}`}
+                  />
+                  <InfoField label="Aggregate warmup" value={formatTimestamp(selectedJob.warmupFrom, preferences.timeDisplay)} />
+                  <InfoField label="API-key filter" value={selectedJob.apiKeyId === null ? "All keys / legacy" : String(selectedJob.apiKeyId)} />
+                  <InfoField label="Created by" value={selectedJob.createdBy} />
+                  <InfoField label="Created" value={formatTimestamp(selectedJob.createdAt, preferences.timeDisplay)} />
+                  <InfoField label="Started" value={formatTimestamp(selectedJob.startedAt, preferences.timeDisplay)} />
+                  <InfoField label="Lease expires" value={formatTimestamp(selectedJob.leaseExpiresAt, preferences.timeDisplay)} />
+                  <InfoField label="Updated" value={formatTimestamp(selectedJob.updatedAt, preferences.timeDisplay)} />
+                  <InfoField label="Completed" value={formatTimestamp(selectedJob.completedAt, preferences.timeDisplay)} />
+                  <InfoField label="Paused" value={formatTimestamp(selectedJob.pausedAt, preferences.timeDisplay)} />
+                  <InfoField label="Cancelled" value={formatTimestamp(selectedJob.cancelledAt, preferences.timeDisplay)} />
+                  <InfoField label="Last checkpoint" value={selectedJob.lastCommittedPosition === null ? "Not started" : String(selectedJob.lastCommittedPosition)} />
+                </InfoGrid>
               </Paper>
 
-              <Box>
-                <Typography variant="subtitle1" sx={{ mb: 1 }}>Transition history</Typography>
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
+                  <Typography variant="subtitle1">Transition history</Typography>
+                  {transitionsQuery.data && <Chip label={`${transitionsQuery.data.length} transitions`} size="small" variant="outlined" />}
+                </Stack>
                 {transitionsQuery.isLoading && <CircularProgress size={20} />}
-                <Stack spacing={1}>
-                  {transitionsQuery.data?.map((transition) => (
-                    <Stack key={transition.id} direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
-                      <Chip label={transition.action} size="small" />
-                      <Typography variant="body2">
-                        {transition.fromStatus ?? "NEW"} → {transition.toStatus} · {transition.actor} · attempt {transition.attemptCount}
-                        {transition.reason ? ` · ${transition.reason}` : ""}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {formatTimestamp(transition.transitionedAt, preferences.timeDisplay)}
-                      </Typography>
-                    </Stack>
+                <Stack spacing={0.5} sx={{ mt: 1 }}>
+                  {transitionsQuery.data?.map((transition, index) => (
+                    <TransitionRow
+                      key={transition.id}
+                      transition={transition}
+                      last={index === (transitionsQuery.data?.length ?? 0) - 1}
+                      timeDisplay={preferences.timeDisplay}
+                    />
                   ))}
                 </Stack>
-              </Box>
+              </Paper>
 
               <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "center" }} gap={1}>
                 <Typography variant="subtitle1">Outcomes</Typography>
@@ -895,30 +883,106 @@ function statusColor(status: ReplayJobStatus): "default" | "info" | "success" | 
 
 function SummaryCard({ label, value }: { label: string; value: number | string }) {
   return (
-    <Card variant="outlined" sx={{ minWidth: 135, flex: 1 }}>
-      <CardContent sx={{ "&:last-child": { pb: 1.5 } }}>
-        <Typography variant="caption" color="text.secondary">{label}</Typography>
-        <Typography variant="h6">{typeof value === "number" ? value.toLocaleString() : value}</Typography>
-      </CardContent>
-    </Card>
-  );
-}
-
-function DetailValue({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
-  return (
     <Box sx={{
       minWidth: 0,
       p: 1.25,
       border: 1,
       borderColor: "divider",
       borderRadius: 1,
-      bgcolor: "background.paper",
+      bgcolor: "background.default",
+    }}>
+      <Typography variant="caption" color="text.secondary">{label}</Typography>
+      <Typography variant="h6" noWrap>{typeof value === "number" ? value.toLocaleString() : value}</Typography>
+    </Box>
+  );
+}
+
+function InfoGrid({ children }: { children: ReactNode }) {
+  return (
+    <Box sx={{
+      display: "grid",
+      gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))", lg: "repeat(3, minmax(0, 1fr))" },
+      columnGap: 2,
+      rowGap: 0.5,
+      mt: 1,
+    }}>
+      {children}
+    </Box>
+  );
+}
+
+function InfoField({ label, value, wide = false }: { label: string; value: ReactNode; wide?: boolean }) {
+  return (
+    <Box sx={{
+      minWidth: 0,
+      py: 1,
+      borderBottom: 1,
+      borderColor: "divider",
       ...(wide ? { gridColumn: { xs: "auto", sm: "1 / -1" } } : {}),
     }}>
       <Typography variant="caption" color="text.secondary">{label}</Typography>
-      <Typography variant="body2" sx={{ overflowWrap: "anywhere" }}>{value}</Typography>
+      <Typography component="div" variant="body2" sx={{ overflowWrap: "anywhere" }}>{value}</Typography>
     </Box>
   );
+}
+
+function TransitionRow({
+  transition,
+  last,
+  timeDisplay,
+}: {
+  transition: ReplayJobTransition;
+  last: boolean;
+  timeDisplay: "local" | "utc";
+}) {
+  return (
+    <Stack direction="row" spacing={1.25} sx={{ minWidth: 0 }}>
+      <Box sx={{ position: "relative", width: 16, flex: "0 0 16px", alignSelf: "stretch" }}>
+        <Box sx={{
+          position: "absolute",
+          top: 7,
+          left: 4,
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          bgcolor: transitionDotColor(transition.action),
+        }} />
+        {!last && <Box sx={{ position: "absolute", top: 15, bottom: -6, left: 7, width: 1, bgcolor: "divider" }} />}
+      </Box>
+      <Box sx={{ minWidth: 0, flex: 1, pb: last ? 0 : 1.5 }}>
+        <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "center" }} gap={0.75}>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Chip label={transition.action} size="small" color={transitionChipColor(transition.action)} variant="outlined" />
+            <Typography variant="body2">
+              {transition.fromStatus ?? "NEW"} → {transition.toStatus}
+            </Typography>
+          </Stack>
+          <Typography variant="caption" color="text.secondary">
+            {formatTimestamp(transition.transitionedAt, timeDisplay)}
+          </Typography>
+        </Stack>
+        <Typography variant="caption" color="text.secondary">
+          {transition.actor} · attempt {transition.attemptCount}
+          {transition.reason ? ` · ${transition.reason}` : ""}
+        </Typography>
+      </Box>
+    </Stack>
+  );
+}
+
+function transitionChipColor(action: string): "default" | "info" | "success" | "warning" | "error" {
+  if (action === "COMPLETED") return "success";
+  if (action === "FAILED") return "error";
+  if (action.includes("PAUSE") || action.includes("CANCEL")) return "warning";
+  if (action === "CLAIMED" || action === "RETRIED") return "info";
+  return "default";
+}
+
+function transitionDotColor(action: string) {
+  if (action === "COMPLETED") return "success.main";
+  if (action === "FAILED") return "error.main";
+  if (action.includes("PAUSE") || action.includes("CANCEL")) return "warning.main";
+  return "primary.main";
 }
 
 function AggregateSummary({ aggregate }: { aggregate: unknown }) {

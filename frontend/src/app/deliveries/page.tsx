@@ -2,6 +2,9 @@
 
 import {
   Alert,
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Box,
   Button,
   Chip,
@@ -15,6 +18,7 @@ import {
   FormControlLabel,
   InputLabel,
   MenuItem,
+  Paper,
   Select,
   Stack,
   Switch,
@@ -23,12 +27,13 @@ import {
 } from "@mui/material";
 import HistoryIcon from "@mui/icons-material/History";
 import FilterAltIcon from "@mui/icons-material/FilterAlt";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import ReplayIcon from "@mui/icons-material/Replay";
 import Link from "next/link";
 import { type GridColDef, type GridPaginationModel, type GridRowParams } from "@mui/x-data-grid";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { api, errorMessage } from "@/lib/api";
 import { ClientDataGrid } from "@/components/ClientDataGrid";
 import { formatTimestamp } from "@/lib/formatters";
@@ -293,35 +298,76 @@ export default function DeliveriesPage() {
       </Box>
 
       <Dialog open={selectedId !== null} onClose={() => setSelectedId(null)} maxWidth="md" fullWidth>
-        <DialogTitle>Webhook delivery details</DialogTitle>
+        <DialogTitle sx={{ pb: 1.5 }}>
+          {selectedDelivery ? (
+            <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "center" }} gap={1}>
+              <Box sx={{ minWidth: 0 }}>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <StatusChip status={selectedDelivery.status} />
+                  <Typography variant="h6" noWrap>{selectedDelivery.ruleName}</Typography>
+                </Stack>
+                <Typography variant="body2" color="text.secondary">
+                  Delivery #{selectedDelivery.id} · Event <Link href={`/events/${selectedDelivery.eventId}`}>{selectedDelivery.eventId}</Link>
+                </Typography>
+              </Box>
+              <Chip label={`${selectedDelivery.attemptCount} attempt(s)`} size="small" variant="outlined" />
+            </Stack>
+          ) : "Webhook delivery details"}
+        </DialogTitle>
         <DialogContent dividers>
           {detailQuery.isLoading && <Typography>Loading delivery…</Typography>}
           {detailQuery.error && <Alert severity="error">{errorMessage(detailQuery.error)}</Alert>}
           {selectedDelivery && detailQuery.data && (
             <Stack spacing={2}>
-              <Stack direction="row" spacing={1} alignItems="center">
-                <StatusChip status={selectedDelivery.status} />
-                <Typography variant="h6">{selectedDelivery.ruleName}</Typography>
-              </Stack>
-              <Typography variant="body2">
-                Event <Link href={`/events/${selectedDelivery.eventId}`}>{selectedDelivery.eventId}</Link>
-                {" · "}{selectedDelivery.destination} · {selectedDelivery.attemptCount} attempt(s)
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Trigger {selectedDelivery.triggerMode} · Scope {selectedDelivery.scopeKey ?? "global"}
-                {selectedDelivery.windowStart ? ` · Window ${formatTimestamp(selectedDelivery.windowStart, preferences.timeDisplay)}` : ""}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Created {formatTimestamp(selectedDelivery.createdAt, preferences.timeDisplay)} · Next attempt {formatTimestamp(selectedDelivery.nextAttemptAt, preferences.timeDisplay)} · Last attempt {formatTimestamp(selectedDelivery.lastAttemptAt, preferences.timeDisplay)} · Delivered {formatTimestamp(selectedDelivery.deliveredAt, preferences.timeDisplay)}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                HTTP {selectedDelivery.lastStatusCode ?? "—"} · Manually retried {formatTimestamp(selectedDelivery.manuallyRetriedAt, preferences.timeDisplay)}
-              </Typography>
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
+                  <Typography variant="subtitle1">Delivery overview</Typography>
+                  <Typography variant="caption" color="text.secondary">Webhook delivery</Typography>
+                </Stack>
+                <InfoGrid>
+                  <InfoField wide label="Destination" value={selectedDelivery.destination} />
+                  <InfoField label="Event" value={<Link href={`/events/${selectedDelivery.eventId}`}>{selectedDelivery.eventId}</Link>} />
+                  <InfoField label="HTTP status" value={selectedDelivery.lastStatusCode ?? "—"} />
+                  <InfoField label="Trigger mode" value={selectedDelivery.triggerMode} />
+                  <InfoField label="Scope" value={selectedDelivery.scopeKey ?? "global"} />
+                  <InfoField label="Window start" value={formatTimestamp(selectedDelivery.windowStart, preferences.timeDisplay)} />
+                </InfoGrid>
+              </Paper>
+
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1.25 }}>Timeline</Typography>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={{ xs: 1.25, sm: 0 }}>
+                  <TimelineItem label="Created" value={formatTimestamp(selectedDelivery.createdAt, preferences.timeDisplay)} />
+                  <TimelineItem label="Next attempt" value={formatTimestamp(selectedDelivery.nextAttemptAt, preferences.timeDisplay)} />
+                  <TimelineItem label="Last attempt" value={formatTimestamp(selectedDelivery.lastAttemptAt, preferences.timeDisplay)} />
+                  <TimelineItem label="Delivered" value={formatTimestamp(selectedDelivery.deliveredAt, preferences.timeDisplay)} />
+                </Stack>
+              </Paper>
+
               {selectedDelivery.lastError && <Alert severity="warning">{selectedDelivery.lastError}</Alert>}
-              <Typography variant="subtitle2">Payload</Typography>
-              <Box component="pre" sx={{ m: 0, p: 2, bgcolor: "action.hover", borderRadius: 1, overflow: "auto", maxHeight: 300, fontSize: 13 }}>
-                {JSON.stringify(detailQuery.data.payload, null, 2)}
-              </Box>
+
+              <Accordion disableGutters variant="outlined" sx={{ "&::before": { display: "none" } }}>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography variant="subtitle2">Technical details</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <InfoGrid>
+                    <InfoField wide label="Deduplication key" value={detailQuery.data.deduplicationKey} />
+                    <InfoField label="Manually retried" value={formatTimestamp(selectedDelivery.manuallyRetriedAt, preferences.timeDisplay)} />
+                    <InfoField label="Lease expires" value={formatTimestamp(detailQuery.data.leaseExpiresAt, preferences.timeDisplay)} />
+                  </InfoGrid>
+                </AccordionDetails>
+              </Accordion>
+
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.25 }}>
+                  <Typography variant="subtitle1">Payload</Typography>
+                  <Typography variant="caption" color="text.secondary">JSON</Typography>
+                </Stack>
+                <Box component="pre" sx={{ m: 0, p: 2, bgcolor: "action.hover", borderRadius: 1, overflow: "auto", maxHeight: 320, fontSize: 13 }}>
+                  {JSON.stringify(detailQuery.data.payload, null, 2)}
+                </Box>
+              </Paper>
             </Stack>
           )}
         </DialogContent>
@@ -351,6 +397,47 @@ export default function DeliveriesPage() {
 function StatusChip({ status }: { status: WebhookDeliveryStatus }) {
   const color = status === "DELIVERED" ? "success" : status === "DEAD_LETTER" ? "error" : status === "PROCESSING" ? "info" : "warning";
   return <Chip label={statusLabel(status)} color={color} size="small" />;
+}
+
+function InfoGrid({ children }: { children: ReactNode }) {
+  return (
+    <Box sx={{
+      display: "grid",
+      gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))" },
+      columnGap: 2,
+      rowGap: 0.5,
+      mt: 1,
+    }}>
+      {children}
+    </Box>
+  );
+}
+
+function InfoField({ label, value, wide = false }: { label: string; value: ReactNode; wide?: boolean }) {
+  return (
+    <Box sx={{
+      minWidth: 0,
+      py: 1,
+      borderBottom: 1,
+      borderColor: "divider",
+      ...(wide ? { gridColumn: { xs: "auto", sm: "1 / -1" } } : {}),
+    }}>
+      <Typography variant="caption" color="text.secondary">{label}</Typography>
+      <Typography component="div" variant="body2" sx={{ overflowWrap: "anywhere" }}>{value}</Typography>
+    </Box>
+  );
+}
+
+function TimelineItem({ label, value }: { label: string; value: string }) {
+  return (
+    <Box sx={{ flex: 1, minWidth: 0, px: { sm: 1.25 }, borderLeft: { sm: 1 }, borderColor: { sm: "divider" } }}>
+      <Stack direction="row" spacing={0.75} alignItems="center">
+        <Box sx={{ width: 7, height: 7, borderRadius: "50%", bgcolor: "primary.main", flex: "0 0 auto" }} />
+        <Typography variant="caption" color="text.secondary">{label}</Typography>
+      </Stack>
+      <Typography variant="body2" sx={{ mt: 0.35, overflowWrap: "anywhere" }}>{value}</Typography>
+    </Box>
+  );
 }
 
 function statusLabel(status: WebhookDeliveryStatus) {
