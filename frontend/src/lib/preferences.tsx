@@ -8,23 +8,19 @@ import {
   useMemo,
   useState,
 } from "react";
-
-export const PREFERENCES_STORAGE_KEY = "tengen-ui-preferences";
-export const PREFERENCES_VERSION = 1 as const;
+import { api, errorMessage } from "@/lib/api";
 
 export type ThemeMode = "light" | "dark" | "system";
 export type AccentKey = "blue" | "indigo" | "purple" | "teal" | "green" | "orange";
 export type TimeDisplay = "local" | "utc";
 
 export interface AppPreferences {
-  version: typeof PREFERENCES_VERSION;
   themeMode: ThemeMode;
   accentColor: AccentKey;
   timeDisplay: TimeDisplay;
 }
 
 export const DEFAULT_PREFERENCES: AppPreferences = {
-  version: PREFERENCES_VERSION,
   themeMode: "light",
   accentColor: "blue",
   timeDisplay: "local",
@@ -32,11 +28,21 @@ export const DEFAULT_PREFERENCES: AppPreferences = {
 
 interface PreferencesContextValue {
   preferences: AppPreferences;
+  loading: boolean;
+  saving: boolean;
+  error: string | null;
   resolvedThemeMode: Exclude<ThemeMode, "system">;
-  setThemeMode: (themeMode: ThemeMode) => void;
-  setAccentColor: (accentColor: AccentKey) => void;
-  setTimeDisplay: (timeDisplay: TimeDisplay) => void;
-  resetPreferences: () => void;
+  setThemeMode: (themeMode: ThemeMode) => Promise<boolean>;
+  setAccentColor: (accentColor: AccentKey) => Promise<boolean>;
+  setTimeDisplay: (timeDisplay: TimeDisplay) => Promise<boolean>;
+  resetPreferences: () => Promise<boolean>;
+}
+
+interface PreferencesProviderProps {
+  children: React.ReactNode;
+  /** Authentication state is supplied by the root layout after AuthProvider mounts. */
+  isAuthenticated?: boolean;
+  authChecking?: boolean;
 }
 
 const PreferencesContext = createContext<PreferencesContextValue | null>(null);
@@ -54,46 +60,69 @@ function isTimeDisplay(value: unknown): value is TimeDisplay {
   return value === "local" || value === "utc";
 }
 
-export function parsePreferences(raw: string | null): AppPreferences | null {
-  if (!raw) return null;
+export function parsePreferences(value: unknown): AppPreferences | null {
+  if (!value || typeof value !== "object") return null;
 
-  try {
-    const value = JSON.parse(raw) as Partial<AppPreferences> | null;
-    if (!value || value.version !== PREFERENCES_VERSION) return null;
-    if (!isThemeMode(value.themeMode) || !isAccentKey(value.accentColor) || !isTimeDisplay(value.timeDisplay)) {
-      return null;
-    }
-    return {
-      version: PREFERENCES_VERSION,
-      themeMode: value.themeMode,
-      accentColor: value.accentColor,
-      timeDisplay: value.timeDisplay,
-    };
-  } catch {
+  const candidate = value as Partial<AppPreferences>;
+  if (!isThemeMode(candidate.themeMode)
+    || !isAccentKey(candidate.accentColor)
+    || !isTimeDisplay(candidate.timeDisplay)) {
     return null;
   }
+
+  return {
+    themeMode: candidate.themeMode,
+    accentColor: candidate.accentColor,
+    timeDisplay: candidate.timeDisplay,
+  };
 }
 
-function savePreferences(preferences: AppPreferences) {
-  try {
-    window.localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify(preferences));
-  } catch {
-    // Keep the updated value in memory when storage is unavailable.
-  }
-}
-
-export function PreferencesProvider({ children }: { children: React.ReactNode }) {
+export function PreferencesProvider({
+  children,
+  isAuthenticated = false,
+  authChecking = false,
+}: PreferencesProviderProps) {
   const [preferences, setPreferences] = useState<AppPreferences>(DEFAULT_PREFERENCES);
   const [prefersDark, setPrefersDark] = useState(false);
+  const [loading, setLoading] = useState(authChecking || isAuthenticated);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      const stored = parsePreferences(window.localStorage.getItem(PREFERENCES_STORAGE_KEY));
-      if (stored) setPreferences(stored);
-    } catch {
-      // Keep defaults when storage is unavailable.
+    if (authChecking) {
+      setLoading(true);
+      return;
     }
 
+    if (!isAuthenticated) {
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    let active = true;
+    setLoading(true);
+    setError(null);
+
+    api.get<AppPreferences>("/settings")
+      .then((response) => {
+        const stored = parsePreferences(response.data);
+        if (!stored) throw new Error("Backend returned invalid preferences");
+        if (active) setPreferences(stored);
+      })
+      .catch((reason: unknown) => {
+        if (active) setError(`Unable to load preferences. ${errorMessage(reason)}`);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [authChecking, isAuthenticated]);
+
+  useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
 
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
@@ -103,34 +132,48 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
     return () => mediaQuery.removeEventListener("change", updateSystemTheme);
   }, []);
 
-  const updatePreferences = useCallback((update: (current: AppPreferences) => AppPreferences) => {
-    setPreferences((current) => {
-      const next = update(current);
-      savePreferences(next);
-      return next;
-    });
+  const persistPreferences = useCallback(async (
+    next: AppPreferences,
+    previous: AppPreferences,
+  ) => {
+    setPreferences(next);
+    setSaving(true);
+    setError(null);
+
+    try {
+      const response = await api.put<AppPreferences>("/settings", next);
+      const saved = parsePreferences(response.data);
+      if (!saved) throw new Error("Backend returned invalid preferences");
+      setPreferences(saved);
+      return true;
+    } catch (reason) {
+      setPreferences(previous);
+      setError(`Unable to save preferences. ${errorMessage(reason)}`);
+      return false;
+    } finally {
+      setSaving(false);
+    }
   }, []);
 
   const setThemeMode = useCallback((themeMode: ThemeMode) => {
-    updatePreferences((current) => ({ ...current, themeMode }));
-  }, [updatePreferences]);
+    const previous = preferences;
+    return persistPreferences({ ...preferences, themeMode }, previous);
+  }, [persistPreferences, preferences]);
 
   const setAccentColor = useCallback((accentColor: AccentKey) => {
-    updatePreferences((current) => ({ ...current, accentColor }));
-  }, [updatePreferences]);
+    const previous = preferences;
+    return persistPreferences({ ...preferences, accentColor }, previous);
+  }, [persistPreferences, preferences]);
 
   const setTimeDisplay = useCallback((timeDisplay: TimeDisplay) => {
-    updatePreferences((current) => ({ ...current, timeDisplay }));
-  }, [updatePreferences]);
+    const previous = preferences;
+    return persistPreferences({ ...preferences, timeDisplay }, previous);
+  }, [persistPreferences, preferences]);
 
   const resetPreferences = useCallback(() => {
-    setPreferences(DEFAULT_PREFERENCES);
-    try {
-      window.localStorage.removeItem(PREFERENCES_STORAGE_KEY);
-    } catch {
-      // Keep defaults in memory when storage is unavailable.
-    }
-  }, []);
+    const previous = preferences;
+    return persistPreferences(DEFAULT_PREFERENCES, previous);
+  }, [persistPreferences, preferences]);
 
   const resolvedThemeMode = preferences.themeMode === "system"
     ? (prefersDark ? "dark" : "light")
@@ -138,12 +181,25 @@ export function PreferencesProvider({ children }: { children: React.ReactNode })
 
   const value = useMemo<PreferencesContextValue>(() => ({
     preferences,
+    loading,
+    saving,
+    error,
     resolvedThemeMode,
     setThemeMode,
     setAccentColor,
     setTimeDisplay,
     resetPreferences,
-  }), [preferences, resolvedThemeMode, setThemeMode, setAccentColor, setTimeDisplay, resetPreferences]);
+  }), [
+    preferences,
+    loading,
+    saving,
+    error,
+    resolvedThemeMode,
+    setThemeMode,
+    setAccentColor,
+    setTimeDisplay,
+    resetPreferences,
+  ]);
 
   return <PreferencesContext.Provider value={value}>{children}</PreferencesContext.Provider>;
 }

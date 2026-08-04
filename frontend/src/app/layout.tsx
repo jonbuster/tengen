@@ -5,9 +5,19 @@ import { usePathname } from "next/navigation";
 import { AppThemeProvider } from "@/theme";
 import { Providers } from "./providers";
 import { NavBar } from "@/components/NavBar";
-import { AuthProvider } from "@/lib/auth";
+import { AuthProvider, useAuth } from "@/lib/auth";
 import { PreferencesProvider } from "@/lib/preferences";
 import "./globals.css";
+
+function AuthenticatedPreferences({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, checking } = useAuth();
+
+  return (
+    <PreferencesProvider isAuthenticated={isAuthenticated} authChecking={checking}>
+      {children}
+    </PreferencesProvider>
+  );
+}
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -16,10 +26,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <PreferencesProvider>
-          <AppThemeProvider>
-            <Providers>
-              <AuthProvider>
+        <Providers>
+          <AuthProvider>
+            <AuthenticatedPreferences>
+              <AppThemeProvider>
                 <Box sx={{ display: "flex", minHeight: "100vh" }}>
                   <NavBar />
                   <Box
@@ -76,10 +86,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     )}
                   </Box>
                 </Box>
-              </AuthProvider>
-            </Providers>
-          </AppThemeProvider>
-        </PreferencesProvider>
+              </AppThemeProvider>
+            </AuthenticatedPreferences>
+          </AuthProvider>
+        </Providers>
       </body>
     </html>
   );

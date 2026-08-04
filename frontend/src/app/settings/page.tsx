@@ -26,6 +26,9 @@ import { ACCENT_OPTIONS } from "@/theme";
 export default function SettingsPage() {
   const {
     preferences,
+    loading,
+    saving,
+    error,
     setThemeMode,
     setAccentColor,
     setTimeDisplay,
@@ -33,9 +36,10 @@ export default function SettingsPage() {
   } = usePreferences();
   const [resetNotice, setResetNotice] = useState(false);
 
-  const handleReset = () => {
-    resetPreferences();
-    setResetNotice(true);
+  const handleReset = async () => {
+    setResetNotice(false);
+    const saved = await resetPreferences();
+    if (saved) setResetNotice(true);
   };
 
   return (
@@ -45,10 +49,28 @@ export default function SettingsPage() {
         <Box>
           <Typography variant="h5">Settings</Typography>
           <Typography variant="body2" color="text.secondary">
-            Customize this console for your browser.
+            Customize this admin console.
           </Typography>
         </Box>
       </Stack>
+
+      {loading && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Loading saved preferences...
+        </Alert>
+      )}
+
+      {saving && !loading && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Saving preferences...
+        </Alert>
+      )}
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
 
       {resetNotice && (
         <Alert severity="success" onClose={() => setResetNotice(false)} sx={{ mb: 2 }}>
@@ -64,8 +86,9 @@ export default function SettingsPage() {
               exclusive
               value={preferences.themeMode}
               onChange={(_event, value) => {
-                if (value) setThemeMode(value);
+                if (value) void setThemeMode(value);
               }}
+              disabled={loading || saving}
               aria-label="Theme mode"
               sx={{ mt: 1, alignSelf: "flex-start" }}
             >
@@ -94,7 +117,8 @@ export default function SettingsPage() {
                     key={option.key}
                     component="button"
                     type="button"
-                    onClick={() => setAccentColor(option.key)}
+                    disabled={loading || saving}
+                    onClick={() => void setAccentColor(option.key)}
                     aria-label={`${option.label} accent`}
                     aria-pressed={selected}
                     sx={{
@@ -105,7 +129,7 @@ export default function SettingsPage() {
                       border: "2px solid",
                       borderColor: selected ? "text.primary" : "transparent",
                       backgroundColor: "transparent",
-                      cursor: "pointer",
+                      cursor: loading || saving ? "default" : "pointer",
                       display: "grid",
                       placeItems: "center",
                       outlineOffset: 3,
@@ -127,12 +151,12 @@ export default function SettingsPage() {
             </Stack>
           </FormControl>
 
-          <FormControl component="fieldset">
+          <FormControl component="fieldset" disabled={loading || saving}>
             <FormLabel component="legend">Time display</FormLabel>
             <RadioGroup
               row
               value={preferences.timeDisplay}
-              onChange={(event) => setTimeDisplay(event.target.value as "local" | "utc")}
+              onChange={(event) => void setTimeDisplay(event.target.value as "local" | "utc")}
               aria-label="Time display"
               sx={{ mt: 0.5 }}
             >
@@ -151,7 +175,12 @@ export default function SettingsPage() {
                 Restore the light theme, blue accent, and local time defaults.
               </Typography>
             </Box>
-            <Button variant="outlined" onClick={handleReset} sx={{ alignSelf: { xs: "flex-start", sm: "center" } }}>
+            <Button
+              variant="outlined"
+              onClick={() => void handleReset()}
+              disabled={loading || saving}
+              sx={{ alignSelf: { xs: "flex-start", sm: "center" } }}
+            >
               Reset to defaults
             </Button>
           </Stack>
