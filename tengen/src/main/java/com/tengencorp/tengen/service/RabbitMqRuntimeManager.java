@@ -5,6 +5,8 @@ import com.tengencorp.tengen.entity.RabbitMqConnector;
 import com.tengencorp.tengen.entity.RabbitMqConnectorRuntimeState;
 import com.tengencorp.tengen.exception.RabbitMqConnectorException;
 import com.tengencorp.tengen.exception.RabbitMqPermanentMessageException;
+import com.tengencorp.tengen.helper.LogSafe;
+import com.tengencorp.tengen.helper.WarningLogRateLimiter;
 import com.tengencorp.tengen.repository.RabbitMqConnectorRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -45,6 +47,7 @@ public class RabbitMqRuntimeManager {
     private final Counter deadLetteredCounter;
     private final Counter watermarkAppliedCounter;
     private final Counter watermarkSkippedCounter;
+    private final WarningLogRateLimiter warningLogRateLimiter = new WarningLogRateLimiter();
 
     public RabbitMqRuntimeManager(
             RabbitMqConnectorRepository connectorRepository,
@@ -85,13 +88,15 @@ public class RabbitMqRuntimeManager {
             try {
                 start(connector);
             } catch (RabbitMqConnectorException exception) {
-                log.warn("RabbitMQ connector paused on startup: connector={}, category={}",
-                    connector.getConnectorKey(), exception.category());
+                warn("rabbitmq_startup_failed", String.valueOf(connector.getId()),
+                    "event=rabbitmq_connector name=paused_on_startup connectorId={} category={}",
+                    connector.getId(), LogSafe.text(exception.category()));
             } catch (Exception exception) {
                 setState(connector.getId(), RabbitMqConnectorRuntimeState.ERROR,
                     "STARTUP_FAILED");
-                log.warn("RabbitMQ connector paused on startup: connector={}, category=STARTUP_FAILED",
-                    connector.getConnectorKey());
+                warn("rabbitmq_startup_failed", String.valueOf(connector.getId()),
+                    "event=rabbitmq_connector name=paused_on_startup connectorId={} category=STARTUP_FAILED",
+                    connector.getId());
             }
         });
     }
@@ -187,6 +192,9 @@ public class RabbitMqRuntimeManager {
     }
 
     public synchronized void pause(RabbitMqConnector connector, String category) {
+        warn("rabbitmq_connector_paused", String.valueOf(connector.getId()),
+            "event=rabbitmq_connector name=paused connectorId={} category={}",
+            connector.getId(), LogSafe.text(category));
         RuntimeHandle handle = handles.get(connector.getId());
         if (handle != null) {
             setState(connector.getId(), RabbitMqConnectorRuntimeState.PAUSED, category);
@@ -207,12 +215,16 @@ public class RabbitMqRuntimeManager {
                                 Channel channel) throws Exception {
         long started = System.nanoTime();
         int attempts = Math.max(1, connector.getRetryAttempts());
+        String messageId = message.getMessageProperties().getMessageId();
         for (int attempt = 1; attempt <= attempts; attempt++) {
             try {
                 RabbitMqMessageProcessingService.DeliveryResult result = processingService.processOnce(
                     connector, message.getMessageProperties(), message.getBody());
                 if (result.deduplicated()) {
                     deduplicatedCounter.increment();
+                    log.debug(
+                        "event=rabbitmq_delivery name=deduplicated connectorId={} messageId={} reason=receipt_exists",
+                        connector.getId(), LogSafe.text(messageId));
                 } else {
                     acceptedCounter.increment();
                     if (Boolean.FALSE.equals(result.event().getWatermarkApplied())) {
@@ -220,10 +232,18 @@ public class RabbitMqRuntimeManager {
                     } else {
                         watermarkAppliedCounter.increment();
                     }
+                    log.debug(
+                        "event=rabbitmq_delivery name=accepted connectorId={} messageId={} eventId={} watermarkApplied={}",
+                        connector.getId(), LogSafe.text(messageId), result.event().getId(),
+                        result.event().getWatermarkApplied());
                 }
                 channel.basicAck(message.getMessageProperties().getDeliveryTag(), false);
                 return;
             } catch (RabbitMqPermanentMessageException exception) {
+                warn("rabbitmq_permanent_message", String.valueOf(connector.getId()) + ':' + exception.category(),
+                    "event=rabbitmq_delivery name=permanent_failure connectorId={} messageId={} attempt={} category={} durationMs={}",
+                    connector.getId(), LogSafe.text(messageId), attempt, LogSafe.text(exception.category()),
+                    (System.nanoTime() - started) / 1_000_000);
                 try {
                     deadLetter(connector, message, exception.category());
                     channel.basicAck(message.getMessageProperties().getDeliveryTag(), false);
@@ -235,11 +255,17 @@ public class RabbitMqRuntimeManager {
                 }
                 return;
             } catch (RabbitMqConnectorException exception) {
+                warn("rabbitmq_connector_failure", String.valueOf(connector.getId()) + ':' + exception.category(),
+                    "event=rabbitmq_delivery name=connector_failure connectorId={} messageId={} attempt={} category={}",
+                    connector.getId(), LogSafe.text(messageId), attempt, LogSafe.text(exception.category()));
                 pause(connector, exception.category());
                 return;
             } catch (Exception exception) {
                 if (attempt >= attempts) break;
                 retriedCounter.increment();
+                log.debug(
+                    "event=rabbitmq_delivery name=retry_scheduled connectorId={} messageId={} attempt={} maxAttempts={} reason=transient_failure",
+                    connector.getId(), LogSafe.text(messageId), attempt, attempts);
                 sleepBeforeRetry(connector, attempt);
             }
         }
@@ -253,9 +279,16 @@ public class RabbitMqRuntimeManager {
         } catch (Exception exception) {
             pause(connector, "DEAD_LETTER_UNAVAILABLE");
         }
-        log.warn("RabbitMQ delivery ended: connector={}, attempt={}, durationMs={}",
-            connector.getConnectorKey(), attempts,
+        warn("rabbitmq_retries_exhausted", String.valueOf(connector.getId()) + ':' + LogSafe.text(messageId),
+            "event=rabbitmq_delivery name=retries_exhausted connectorId={} messageId={} attempt={} category=PROCESSING_RETRIES_EXHAUSTED durationMs={}",
+            connector.getId(), LogSafe.text(messageId), attempts,
             (System.nanoTime() - started) / 1_000_000);
+    }
+
+    private void warn(String category, String stableKey, String message, Object... arguments) {
+        if (warningLogRateLimiter.tryAcquire(category, stableKey)) {
+            log.warn(message, arguments);
+        }
     }
 
     private void deadLetter(RabbitMqConnector connector, Message message, String category) {

@@ -28,8 +28,12 @@ import com.tengencorp.tengen.exception.IdempotencyConflictException;
 import com.tengencorp.tengen.exception.RabbitMqConnectorException;
 import com.tengencorp.tengen.exception.RabbitMqPermanentMessageException;
 import com.tengencorp.tengen.helper.EventRequestHasher;
+import com.tengencorp.tengen.helper.LogSafe;
+import com.tengencorp.tengen.helper.WarningLogRateLimiter;
 import com.tengencorp.tengen.repository.EventIdempotencyRepository;
 import com.tengencorp.tengen.repository.EventRuleOutcomeRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,6 +54,8 @@ import java.util.Map;
  */
 @Service
 public class EventService {
+
+    private static final Logger log = LoggerFactory.getLogger(EventService.class);
 
     private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 255;
 
@@ -73,6 +79,7 @@ public class EventService {
     private final Counter lateAcceptedEvents;
     private final Counter tooLateEvents;
     private final long maxFutureSkewSeconds;
+    private final WarningLogRateLimiter warningLogRateLimiter = new WarningLogRateLimiter();
 
     public EventService(EventRepository eventRepository, ApiKeyRepository apiKeyRepository,
                         RuleRepository ruleRepository, RuleEngine ruleEngine,
@@ -174,12 +181,24 @@ public class EventService {
 
         if (inserted == 0) {
             if (!requestHash.equals(idempotency.getRequestHash())) {
+                warn("idempotency_conflict", String.valueOf(idempotency.getId()),
+                    "event=ingestion_failure name=idempotency_conflict apiKeyId={} idempotencyRecordId={} reason=payload_mismatch",
+                    apiKeyId, idempotency.getId());
                 throw new IdempotencyConflictException(
                     "Idempotency-Key has already been used with a different event payload");
             }
             if (idempotency.getStatus() == EventIdempotencyStatus.COMPLETED) {
                 replayedEvents.increment();
+                log.debug(
+                    "event=ingestion_replayed origin=HTTP eventId={} apiKeyId={} idempotencyRecordId={} reason=completed",
+                    idempotency.getEvent() != null ? idempotency.getEvent().getId() : null,
+                    apiKeyId, idempotency.getId());
                 return new EventIngestionResult(replayResponse(idempotency), true, null);
+            }
+            if (warningLogRateLimiter.tryAcquire("idempotency_in_progress", String.valueOf(idempotency.getId()))) {
+                log.info(
+                    "event=ingestion_in_progress origin=HTTP apiKeyId={} idempotencyRecordId={} reason=concurrent_request",
+                    apiKeyId, idempotency.getId());
             }
             throw new IdempotencyConflictException(
                 "The request for this Idempotency-Key is still being processed; retry later");
@@ -268,6 +287,16 @@ public class EventService {
             recordEventTimeMetric(eventTimeDecision.status());
             acceptedEvents.increment();
             event.recordProcessingTrace(0, 0, 0);
+            logAccepted(event, new EventResponse(
+                request,
+                "accepted",
+                false,
+                List.of(),
+                List.of(),
+                Map.of(),
+                Map.of(),
+                List.of(),
+                eventTimeDecision.status()), "too_late_side_effects_suppressed");
             return new ProcessingResult(
                 event,
                 new EventResponse(
@@ -364,18 +393,39 @@ public class EventService {
         if (matched) {
             matchedEvents.increment();
         }
-        return new ProcessingResult(
-            event,
-            new EventResponse(
-                request,
-                "accepted",
-                matched,
-                matchedRuleNames,
-                queuedRuleNames,
-                aggregates,
-                sequences,
-                suppressedRuleNames,
-                eventTimeDecision != null ? eventTimeDecision.status() : null));
+        EventResponse response = new EventResponse(
+            request,
+            "accepted",
+            matched,
+            matchedRuleNames,
+            queuedRuleNames,
+            aggregates,
+            sequences,
+            suppressedRuleNames,
+            eventTimeDecision != null ? eventTimeDecision.status() : null);
+        logAccepted(event, response, "processed");
+        return new ProcessingResult(event, response);
+    }
+
+    private void logAccepted(Event event, EventResponse response, String reason) {
+        log.debug(
+            "event=ingestion_accepted origin={} eventId={} apiKeyId={} connectorId={} watermarkApplied={} eventTimeStatus={} matchedCount={} queuedCount={} suppressedCount={} reason={}",
+            event.getIngestionOrigin(),
+            event.getId(),
+            event.getApiKey() != null ? event.getApiKey().getId() : null,
+            event.getRabbitMqConnector() != null ? event.getRabbitMqConnector().getId() : null,
+            event.getWatermarkApplied(),
+            event.getEventTimeStatus(),
+            response.rules().size(),
+            response.queuedRules().size(),
+            response.suppressedRules().size(),
+            LogSafe.text(reason));
+    }
+
+    private void warn(String category, String stableKey, String message, Object... arguments) {
+        if (warningLogRateLimiter.tryAcquire(category, stableKey)) {
+            log.warn(message, arguments);
+        }
     }
 
     private void recordEventTimeMetric(EventTimeStatus status) {

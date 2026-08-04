@@ -8,6 +8,8 @@ import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.entity.RuleAbsenceInstance;
 import com.tengencorp.tengen.entity.RuleAbsenceInstanceStatus;
 import com.tengencorp.tengen.repository.RuleAbsenceInstanceRepository;
+import com.tengencorp.tengen.helper.LogSafe;
+import com.tengencorp.tengen.helper.WarningLogRateLimiter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
@@ -27,6 +29,7 @@ public class AbsenceRuleService {
 
     private final AviatorEvaluatorInstance aviator;
     private final RuleAbsenceInstanceRepository instanceRepository;
+    private final WarningLogRateLimiter warningLogRateLimiter = new WarningLogRateLimiter();
 
     public AbsenceRuleService(AviatorEvaluatorInstance aviator,
                               RuleAbsenceInstanceRepository instanceRepository) {
@@ -48,9 +51,9 @@ public class AbsenceRuleService {
         String scopeKey = groupKey != null ? groupKey : GLOBAL_SCOPE;
 
         boolean expectedMatched = isExpectedEvent(event, rule) && evaluates(
-            rule.getExpectedConditionScript(), event, rule.getName(), "expected");
+            rule.getExpectedConditionScript(), event, rule, "expected");
         boolean startMatched = isStartEvent(event, rule) && evaluates(
-            rule.getConditionScript(), event, rule.getName(), "starting");
+            rule.getConditionScript(), event, rule, "starting");
 
         boolean satisfied = false;
         RuleAbsenceInstance satisfiedInstance = null;
@@ -99,7 +102,7 @@ public class AbsenceRuleService {
         boolean validGroup = !usesGrouping(rule)
             || (groupKey != null && groupKey.length() <= MAX_GROUP_KEY_LENGTH);
         boolean startMatched = validGroup && isStartEvent(start, rule)
-            && evaluates(rule.getConditionScript(), start, rule.getName(), "starting");
+            && evaluates(rule.getConditionScript(), start, rule, "starting");
         if (!startMatched) {
             return new AbsenceTestResult(false, false, validGroup, false, false,
                 "START_NOT_MATCHED", groupKey, null);
@@ -116,7 +119,7 @@ public class AbsenceRuleService {
         boolean correlationMatched = !usesGrouping(rule)
             || (expectedGroupKey != null && expectedGroupKey.equals(groupKey));
         boolean expectedMatched = isExpectedEvent(expected, rule)
-            && evaluates(rule.getExpectedConditionScript(), expected, rule.getName(), "expected");
+            && evaluates(rule.getExpectedConditionScript(), expected, rule, "expected");
         boolean orderingValid = expected.getOccurredAt().isAfter(start.getOccurredAt())
             || (expected.getOccurredAt().equals(start.getOccurredAt())
                 && expectedId(expected) > expectedId(start));
@@ -148,13 +151,18 @@ public class AbsenceRuleService {
             && rule.getExpectedSource().equals(event.getSource());
     }
 
-    private boolean evaluates(String script, Event event, String ruleName, String pattern) {
+    private boolean evaluates(String script, Event event, Rule rule, String pattern) {
         try {
             Object result = aviator.execute(script, buildEnv(event));
             return Boolean.TRUE.equals(result);
         } catch (RuntimeException exception) {
-            log.warn("Absence {} condition evaluation failed for rule [{}]: {}",
-                pattern, ruleName, exception.getMessage());
+            String key = String.valueOf(rule.getId()) + ':' + rule.getEffectiveRevision() + ':' + pattern;
+            if (warningLogRateLimiter.tryAcquire("absence_condition_failed", key)) {
+                log.warn(
+                    "event=rule_evaluation_failure name=absence_condition_failed ruleId={} revision={} eventId={} pattern={} exceptionType={}",
+                    rule.getId(), rule.getEffectiveRevision(), event.getId(), pattern,
+                    LogSafe.exceptionType(exception));
+            }
             return false;
         }
     }

@@ -3,6 +3,11 @@ package com.tengencorp.tengen.controller;
 import com.tengencorp.tengen.dto.WebhookDeliveryDetail;
 import com.tengencorp.tengen.dto.WebhookDeliveryPage;
 import com.tengencorp.tengen.service.WebhookDeliveryAdminService;
+import com.tengencorp.tengen.helper.LogSafe;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -16,6 +21,8 @@ import java.time.Instant;
 @RestController
 @RequestMapping("/api/webhook-deliveries")
 public class WebhookDeliveryAdminController {
+
+    private static final Logger log = LoggerFactory.getLogger(WebhookDeliveryAdminController.class);
 
     private final WebhookDeliveryAdminService deliveryAdminService;
 
@@ -43,6 +50,15 @@ public class WebhookDeliveryAdminController {
 
     @PostMapping("/{id}/retry")
     public WebhookDeliveryDetail retry(@PathVariable Long id) {
-        return deliveryAdminService.retry(id);
+        WebhookDeliveryDetail response = deliveryAdminService.retry(id);
+        log.info("event=admin_mutation action=webhook_retry entity=outbox entityId={} actor={} status={}",
+            id, LogSafe.text(actor()), response.delivery().status());
+        return response;
+    }
+
+    private String actor() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.getName() != null
+            ? authentication.getName() : "system";
     }
 }

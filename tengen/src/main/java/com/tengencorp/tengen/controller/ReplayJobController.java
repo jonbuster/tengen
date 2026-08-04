@@ -7,10 +7,13 @@ import com.tengencorp.tengen.dto.ReplayJobResponse;
 import com.tengencorp.tengen.dto.ReplayJobTransitionResponse;
 import com.tengencorp.tengen.service.ReplayJobControlService;
 import com.tengencorp.tengen.service.ReplayJobService;
+import com.tengencorp.tengen.helper.LogSafe;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,6 +33,8 @@ import java.util.List;
 @RequestMapping("/api/replay-jobs")
 public class ReplayJobController {
 
+    private static final Logger log = LoggerFactory.getLogger(ReplayJobController.class);
+
     private final ReplayJobService replayJobService;
     private final ReplayJobControlService controlService;
 
@@ -42,8 +47,11 @@ public class ReplayJobController {
     @PostMapping
     public ResponseEntity<ReplayJobResponse> create(
             @Valid @RequestBody ReplayJobCreateRequest request) {
-        return ResponseEntity.status(HttpStatus.ACCEPTED)
-            .body(replayJobService.create(request, actor()));
+        ReplayJobResponse response = replayJobService.create(request, actor());
+        log.info(
+            "event=admin_mutation action=replay_create entity=replay_job entityId={} actor={} ruleId={} revision={} status={}",
+            response.id(), LogSafe.text(actor()), response.ruleId(), response.ruleRevision(), response.status());
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
     }
 
     @GetMapping("/{id}")

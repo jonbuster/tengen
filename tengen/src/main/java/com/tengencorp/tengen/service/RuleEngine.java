@@ -9,6 +9,8 @@ import com.tengencorp.tengen.entity.RuleEvent;
 import com.tengencorp.tengen.repository.RuleEventRepository;
 import com.tengencorp.tengen.entity.RuleType;
 import com.tengencorp.tengen.helper.RuleEvaluationSupport;
+import com.tengencorp.tengen.helper.LogSafe;
+import com.tengencorp.tengen.helper.WarningLogRateLimiter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -34,6 +36,7 @@ public class RuleEngine {
     private final SequenceRuleService sequenceRuleService;
     private final Counter expressionErrors;
     private final Counter eventDataErrors;
+    private final WarningLogRateLimiter warningLogRateLimiter = new WarningLogRateLimiter();
 
     public RuleEngine(AviatorEvaluatorInstance aviator, RuleEventRepository ruleEventRepository,
                       SequenceRuleService sequenceRuleService, MeterRegistry meterRegistry) {
@@ -91,20 +94,21 @@ public class RuleEngine {
         if (rule.getRuleType() == RuleType.AGGREGATE) {
             Double value = extractNumericValue(event, rule.getAggField());
             if (usesGrouping(rule) && groupKey == null) {
-                log.debug("Aggregate rule skipped because the group key is missing: ruleId={}, eventId={}",
-                    rule.getId(), event.getId());
+                log.debug("event=rule_evaluation name=aggregate_group_key_missing ruleId={} revision={} eventId={}",
+                    rule.getId(), rule.getEffectiveRevision(), event.getId());
                 eventDataErrors.increment();
                 return new RuleEvaluation(true, null, null);
             }
             if (usesGrouping(rule) && groupKey.length() > RuleEvaluationSupport.MAX_GROUP_KEY_LENGTH) {
-                log.warn("Aggregate rule skipped because the group key is too long: ruleId={}, eventId={}",
-                    rule.getId(), event.getId());
+                warn("aggregate_group_key_too_long", ruleKey(rule),
+                    "event=rule_evaluation_failure name=aggregate_group_key_too_long ruleId={} revision={} eventId={}",
+                    rule.getId(), rule.getEffectiveRevision(), event.getId());
                 eventDataErrors.increment();
                 return new RuleEvaluation(true, null, null);
             }
             if (rule.getAggType() != AggregateType.COUNT && value == null) {
-                log.debug("Aggregate rule skipped because its value is not numeric: ruleId={}, eventId={}",
-                    rule.getId(), event.getId());
+                log.debug("event=rule_evaluation name=aggregate_value_not_numeric ruleId={} revision={} eventId={}",
+                    rule.getId(), rule.getEffectiveRevision(), event.getId());
                 eventDataErrors.increment();
                 return new RuleEvaluation(true, null, groupKey);
             }
@@ -133,9 +137,21 @@ public class RuleEngine {
             return Boolean.TRUE.equals(result);
         } catch (Exception e) {
             // Script errors never fail the request — treat as non-match.
-            log.warn("Rule [{}] condition script evaluation failed: {}", rule.getName(), e.getMessage());
+            warn("rule_condition_failed", ruleKey(rule),
+                "event=rule_evaluation_failure name=condition_expression_failed ruleId={} revision={} exceptionType={}",
+                rule.getId(), rule.getEffectiveRevision(), LogSafe.exceptionType(e));
             expressionErrors.increment();
             return false;
+        }
+    }
+
+    private String ruleKey(Rule rule) {
+        return String.valueOf(rule.getId()) + ':' + rule.getEffectiveRevision();
+    }
+
+    private void warn(String category, String stableKey, String message, Object... arguments) {
+        if (warningLogRateLimiter.tryAcquire(category, stableKey)) {
+            log.warn(message, arguments);
         }
     }
 

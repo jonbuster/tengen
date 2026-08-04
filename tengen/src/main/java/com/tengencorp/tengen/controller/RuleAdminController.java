@@ -13,6 +13,7 @@ import com.tengencorp.tengen.dto.AbsenceTestResult;
 import com.tengencorp.tengen.entity.Event;
 import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.helper.EventJsonParser;
+import com.tengencorp.tengen.helper.LogSafe;
 import com.tengencorp.tengen.repository.RuleRepository;
 import com.tengencorp.tengen.service.RuleEngine;
 import com.tengencorp.tengen.service.RuleLifecycleService;
@@ -22,6 +23,8 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -43,6 +46,8 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/rules")
 public class RuleAdminController {
+
+    private static final Logger log = LoggerFactory.getLogger(RuleAdminController.class);
 
     private final RuleRepository ruleRepository;
     private final RuleEngine ruleEngine;
@@ -82,6 +87,7 @@ public class RuleAdminController {
     @PostMapping
     public ResponseEntity<RuleResponse> create(@Valid @RequestBody RuleRequest request) {
         RuleResponse response = lifecycleService.create(request, actor());
+        logMutation("rule_create", response);
         return withEtag(ResponseEntity.status(HttpStatus.CREATED), response);
     }
 
@@ -90,7 +96,9 @@ public class RuleAdminController {
             @PathVariable Long id,
             @RequestHeader(value = "If-Match", required = false) String ifMatch,
             @Valid @RequestBody RuleRequest request) {
-        return withEtag(lifecycleService.update(id, request, ifMatch, actor()));
+        RuleResponse response = lifecycleService.update(id, request, ifMatch, actor());
+        logMutation("rule_update", response);
+        return withEtag(response);
     }
 
     /** DELETE is retained as a compatible route but now archives the rule. */
@@ -99,6 +107,8 @@ public class RuleAdminController {
             @PathVariable Long id,
             @RequestHeader(value = "If-Match", required = false) String ifMatch) {
         lifecycleService.archive(id, ifMatch, actor());
+        log.info("event=admin_mutation action=rule_archive entity=rule entityId={} actor={}",
+            id, LogSafe.text(actor()));
         return ResponseEntity.noContent().build();
     }
 
@@ -106,14 +116,18 @@ public class RuleAdminController {
     public ResponseEntity<RuleResponse> toggle(
             @PathVariable Long id,
             @RequestHeader(value = "If-Match", required = false) String ifMatch) {
-        return withEtag(lifecycleService.toggle(id, ifMatch, actor()));
+        RuleResponse response = lifecycleService.toggle(id, ifMatch, actor());
+        logMutation(response.active() ? "rule_activate" : "rule_deactivate", response);
+        return withEtag(response);
     }
 
     @PostMapping("/{id}/unarchive")
     public ResponseEntity<RuleResponse> unarchive(
             @PathVariable Long id,
             @RequestHeader(value = "If-Match", required = false) String ifMatch) {
-        return withEtag(lifecycleService.unarchive(id, ifMatch, actor()));
+        RuleResponse response = lifecycleService.unarchive(id, ifMatch, actor());
+        logMutation("rule_unarchive", response);
+        return withEtag(response);
     }
 
     @GetMapping("/{id}/revisions")
@@ -133,7 +147,9 @@ public class RuleAdminController {
             @PathVariable Long id,
             @PathVariable int revision,
             @RequestHeader(value = "If-Match", required = false) String ifMatch) {
-        return withEtag(lifecycleService.restore(id, revision, ifMatch, actor()));
+        RuleResponse response = lifecycleService.restore(id, revision, ifMatch, actor());
+        logMutation("rule_restore", response);
+        return withEtag(response);
     }
 
     @PostMapping("/test")
@@ -203,6 +219,12 @@ public class RuleAdminController {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         return authentication != null && authentication.getName() != null
             ? authentication.getName() : "system";
+    }
+
+    private void logMutation(String action, RuleResponse response) {
+        log.info(
+            "event=admin_mutation action={} entity=rule entityId={} actor={} revision={} active={}",
+            action, response.id(), LogSafe.text(actor()), response.revision(), response.active());
     }
 
     private Event parseRequiredEvent(String eventJson) {

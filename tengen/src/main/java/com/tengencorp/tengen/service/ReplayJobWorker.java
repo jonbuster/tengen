@@ -2,9 +2,13 @@ package com.tengencorp.tengen.service;
 
 import com.tengencorp.tengen.config.ReplayProperties;
 import com.tengencorp.tengen.repository.ReplayJobJdbcRepository;
+import com.tengencorp.tengen.helper.LogSafe;
+import com.tengencorp.tengen.helper.WarningLogRateLimiter;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -15,6 +19,8 @@ import java.util.Optional;
 @ConditionalOnProperty(name = "tengen.replay.worker.enabled", havingValue = "true", matchIfMissing = true)
 public class ReplayJobWorker {
 
+    private static final Logger log = LoggerFactory.getLogger(ReplayJobWorker.class);
+
     private final ReplayJobJdbcRepository jdbcRepository;
     private final ReplayJobBatchService batchService;
     private final ReplayProperties properties;
@@ -23,6 +29,7 @@ public class ReplayJobWorker {
     private final Counter matchedResults;
     private final Counter evaluationErrors;
     private final Counter leasesRecovered;
+    private final WarningLogRateLimiter warningLogRateLimiter = new WarningLogRateLimiter();
 
     public ReplayJobWorker(ReplayJobJdbcRepository jdbcRepository,
                            ReplayJobBatchService batchService,
@@ -64,6 +71,9 @@ public class ReplayJobWorker {
     public void runOnce() {
         int recoveredControls = jdbcRepository.recoverExpiredRequestedControls();
         leasesRecovered.increment(recoveredControls);
+        if (recoveredControls > 0) {
+            log.info("event=replay_worker name=requested_controls_recovered count={}", recoveredControls);
+        }
         Optional<ReplayJobJdbcRepository.ReplayJobLease> claimed = jdbcRepository.claimOldest(
             properties.getWorker().getLeaseDurationMs());
         if (claimed.isEmpty()) {
@@ -73,6 +83,8 @@ public class ReplayJobWorker {
         ReplayJobJdbcRepository.ReplayJobLease lease = claimed.get();
         if (lease.recovered()) {
             leasesRecovered.increment();
+            warn("replay_lease_recovered", String.valueOf(lease.jobId()),
+                "event=replay_worker name=lease_recovered jobId={} reason=expired_lease", lease.jobId());
         }
         try {
             while (true) {
@@ -87,6 +99,8 @@ public class ReplayJobWorker {
                 if (result.completed() || !result.progressMade()) {
                     if (result.completed()) {
                         jobsCompleted.increment();
+                        log.info("event=replay_worker name=job_completed jobId={} matchedCount={} errorCount={}",
+                            lease.jobId(), result.matchedEvents(), result.errorEvents());
                     }
                     return;
                 }
@@ -98,7 +112,20 @@ public class ReplayJobWorker {
             if (jdbcRepository.markFailed(
                 lease.jobId(), lease.leaseToken(), "WORKER_ERROR", safeFailure(exception))) {
                 jobsFailed.increment();
+                log.error(
+                    "event=replay_worker name=job_failed jobId={} category=WORKER_ERROR exceptionType={}",
+                    lease.jobId(), LogSafe.exceptionType(exception), exception);
+            } else {
+                warn("replay_failure_finalize_skipped", String.valueOf(lease.jobId()),
+                    "event=replay_worker name=failure_finalize_skipped jobId={} category=WORKER_ERROR",
+                    lease.jobId());
             }
+        }
+    }
+
+    private void warn(String category, String stableKey, String message, Object... arguments) {
+        if (warningLogRateLimiter.tryAcquire(category, stableKey)) {
+            log.warn(message, arguments);
         }
     }
 

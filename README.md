@@ -340,6 +340,11 @@ explicitly when detailed producer responses are required. Successful event
 responses include `X-Idempotency-Replayed: false` for new processing and `true`
 when a completed idempotent response is replayed.
 
+HTTP clients may send an optional `X-Request-ID` containing up to 64 safe
+identifier characters. Tengen echoes a valid value or generates one, includes
+it in the response, and uses it only for request-log correlation; it is not
+stored with events, deliveries, or other durable records.
+
 ## Technical Reference
 
 ### Rule Behavior
@@ -547,21 +552,17 @@ docker compose --env-file .env -f tengen/docker-compose.yml up -d --build fronte
 The durable webhook outbox, background delivery worker, automatic retries,
 dead-letter handling, delivery-history console, watermarks, absence patterns,
 analysis-only replay jobs with operational controls/history, and the optional
-RabbitMQ connector are implemented.
+RabbitMQ connector are implemented, along with structured Spring Boot failure
+and audit logging.
 
-The next planned sequence adds Spring Boot failure and audit logging. See the
-[CEP roadmap](plans/cep-roadmap-plan.md) for completed work and ordering.
+See the [CEP roadmap](plans/cep-roadmap-plan.md) for completed work and ordering.
 
 Detailed roadmap plans:
 
 - Implemented: [Replay and backfill job MVP](plans/2026-08-04-1244-replay-backfill-job-mvp-plan.md)
 - Implemented: [Replay job controls and history](plans/2026-08-04-1244-replay-job-controls-history-plan.md)
 - Implemented: [RabbitMQ connector with admin UI MVP](plans/2026-08-04-1515-rabbitmq-connector-ui-mvp-plan.md)
-- Next: [Spring Boot failure and audit logging](plans/2026-08-04-1025-spring-boot-logging-plan.md)
-
-Planned but not currently scheduled:
-
-- [Spring Boot failure and audit logging](plans/2026-08-04-1025-spring-boot-logging-plan.md)
+- Implemented: [Spring Boot failure and audit logging](plans/2026-08-04-1025-spring-boot-logging-plan.md)
 
 Detailed webhook implementation plans:
 

@@ -38,12 +38,13 @@ public class RuleValidationAuditService implements ApplicationRunner {
                 rule.setValidationStatus(RuleValidationStatus.INVALID);
                 rule.setValidationError(error);
                 rule.setActive(false);
-                log.warn("Deactivated invalid rule during startup audit: ruleId={}, revision={}, reason={}",
-                    rule.getId(), rule.getEffectiveRevision(), error);
+                log.warn(
+                    "event=rule_validation_audit name=invalid_rule ruleId={} revision={} reason=invalid_configuration",
+                    rule.getId(), rule.getEffectiveRevision());
             }
         }
         if (invalid > 0) {
-            log.warn("Rule validation audit found {} invalid rule(s)", invalid);
+            log.warn("event=rule_validation_audit name=invalid_rule_count count={}", invalid);
         }
     }
 }

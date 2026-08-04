@@ -329,9 +329,25 @@ Implemented on 2026-08-04 as the optional broker-ingestion slice:
 
 Plan: [`2026-08-04-1515-rabbitmq-connector-ui-mvp-plan.md`](2026-08-04-1515-rabbitmq-connector-ui-mvp-plan.md)
 
+## Implemented: Spring Boot Failure and Audit Logging
+
+Implemented on 2026-08-04 as the operational diagnostics slice:
+
+- Added validated `X-Request-ID` request correlation with MDC cleanup and
+  response propagation.
+- Added structured security, ingestion, rule-evaluation, webhook, replay,
+  RabbitMQ, admin-mutation, and retention logs without recording payloads,
+  credentials, tokens, expressions, or callback URLs.
+- Kept high-volume ingestion and successful webhook delivery at `DEBUG`.
+- Added bounded warning coalescing while preserving every occurrence in
+  metrics, and kept unexpected `ERROR` stack traces unsuppressed.
+
+Plan: [`2026-08-04-1025-spring-boot-logging-plan.md`](2026-08-04-1025-spring-boot-logging-plan.md)
+
 ## Next Planned Sequence
 
-1. [Spring Boot failure and audit logging](2026-08-04-1025-spring-boot-logging-plan.md) — harden structured failure and request audit logging across the service.
+No additional feature is currently scheduled. Remaining assessment roadmap
+items are listed below.
 
 ## Later Assessment Roadmap
 

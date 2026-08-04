@@ -15,7 +15,7 @@ import java.io.IOException;
 
 /** Enforces the ingestion limit even for chunked requests without Content-Length. */
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE)
+@Order(Ordered.HIGHEST_PRECEDENCE + 1)
 public class RequestBodyLimitFilter extends OncePerRequestFilter {
 
     private final long maxBodyBytes;

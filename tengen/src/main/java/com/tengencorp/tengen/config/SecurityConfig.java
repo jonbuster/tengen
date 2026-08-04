@@ -2,6 +2,10 @@ package com.tengencorp.tengen.config;
 
 import com.tengencorp.tengen.security.ApiKeyAuthFilter;
 import com.tengencorp.tengen.security.JwtAuthFilter;
+import com.tengencorp.tengen.helper.LogSafe;
+import com.tengencorp.tengen.helper.WarningLogRateLimiter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -22,8 +26,11 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableWebSecurity
 public class SecurityConfig {
 
+    private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
+
     private final JwtAuthFilter jwtAuthFilter;
     private final ApiKeyAuthFilter apiKeyAuthFilter;
+    private final WarningLogRateLimiter warningLogRateLimiter = new WarningLogRateLimiter();
 
     public SecurityConfig(JwtAuthFilter jwtAuthFilter, ApiKeyAuthFilter apiKeyAuthFilter) {
         this.jwtAuthFilter = jwtAuthFilter;
@@ -35,11 +42,21 @@ public class SecurityConfig {
         http
             .csrf(AbstractHttpConfigurer::disable)
             .cors(Customizer.withDefaults())
-            .exceptionHandling(ex -> ex
+                .exceptionHandling(ex -> ex
                 .authenticationEntryPoint((request, response, authException) ->
-                    response.sendError(HttpStatus.UNAUTHORIZED.value(), "Unauthorized"))
+                    {
+                        warn("unauthenticated_access", LogSafe.requestPath(request),
+                            "event=security_event name=unauthenticated_access method={} path={} principal=anonymous",
+                            request.getMethod(), LogSafe.requestPath(request));
+                        response.sendError(HttpStatus.UNAUTHORIZED.value(), "Unauthorized");
+                    })
                 .accessDeniedHandler((request, response, accessDeniedException) ->
-                    response.sendError(HttpStatus.FORBIDDEN.value(), "Forbidden")))
+                    {
+                        warn("forbidden_access", LogSafe.requestPath(request),
+                            "event=security_event name=forbidden_access method={} path={} principal={}",
+                            request.getMethod(), LogSafe.requestPath(request), LogSafe.principal(request));
+                        response.sendError(HttpStatus.FORBIDDEN.value(), "Forbidden");
+                    }))
             .authorizeHttpRequests(auth -> auth
                 // Admin APIs use JWT; event ingestion is API-key-only.
                 .requestMatchers("/api/auth/login", "/api/auth/refresh", "/api/auth/logout").permitAll()
@@ -54,6 +71,12 @@ public class SecurityConfig {
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(apiKeyAuthFilter, JwtAuthFilter.class);
         return http.build();
+    }
+
+    private void warn(String category, String stableKey, String message, Object... arguments) {
+        if (warningLogRateLimiter.tryAcquire(category, stableKey)) {
+            log.warn(message, arguments);
+        }
     }
 
     @Bean

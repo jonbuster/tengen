@@ -14,6 +14,8 @@ import com.tengencorp.tengen.entity.RuleSequenceInstanceStatus;
 import com.tengencorp.tengen.entity.RuleSequenceStep;
 import com.tengencorp.tengen.repository.RuleSequenceInstanceEventRepository;
 import com.tengencorp.tengen.repository.RuleSequenceInstanceRepository;
+import com.tengencorp.tengen.helper.LogSafe;
+import com.tengencorp.tengen.helper.WarningLogRateLimiter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
@@ -38,6 +40,7 @@ public class SequenceRuleService {
     private final AviatorEvaluatorInstance aviator;
     private final RuleSequenceInstanceRepository instanceRepository;
     private final RuleSequenceInstanceEventRepository instanceEventRepository;
+    private final WarningLogRateLimiter warningLogRateLimiter = new WarningLogRateLimiter();
 
     public SequenceRuleService(AviatorEvaluatorInstance aviator,
                                RuleSequenceInstanceRepository instanceRepository,
@@ -134,7 +137,7 @@ public class SequenceRuleService {
         for (int index = 0; index < configuredSteps.size(); index++) {
             Event event = events.get(index);
             RuleSequenceStep step = configuredSteps.get(index);
-            boolean conditionMatched = matchesStep(event, step);
+            boolean conditionMatched = matchesStep(event, rule, step);
             allConditions = allConditions && conditionMatched;
             stepResults.add(new SequenceStepTestResult(index + 1, conditionMatched,
                 event.getOccurredAt()));
@@ -196,21 +199,28 @@ public class SequenceRuleService {
     private List<Integer> matchingPositions(Event event, Rule rule) {
         List<Integer> positions = new ArrayList<>();
         for (RuleSequenceStep step : rule.getSequenceSteps()) {
-            if (matchesStep(event, step)) {
+            if (matchesStep(event, rule, step)) {
                 positions.add(step.getPosition());
             }
         }
         return positions;
     }
 
-    private boolean matchesStep(Event event, RuleSequenceStep step) {
+    private boolean matchesStep(Event event, Rule rule, RuleSequenceStep step) {
         if (!step.getEventType().equals(event.getType()) || !step.getSource().equals(event.getSource())) {
             return false;
         }
         try {
             return Boolean.TRUE.equals(aviator.execute(step.getConditionScript(), buildEnv(event)));
         } catch (Exception exception) {
-            log.warn("Sequence step condition evaluation failed: {}", exception.getMessage());
+            String key = String.valueOf(rule.getId()) + ':' + rule.getEffectiveRevision()
+                + ':' + step.getPosition();
+            if (warningLogRateLimiter.tryAcquire("sequence_step_condition_failed", key)) {
+                log.warn(
+                    "event=rule_evaluation_failure name=sequence_step_condition_failed ruleId={} revision={} eventId={} stepPosition={} exceptionType={}",
+                    rule.getId(), rule.getEffectiveRevision(), event.getId(), step.getPosition(),
+                    LogSafe.exceptionType(exception));
+            }
             return false;
         }
     }

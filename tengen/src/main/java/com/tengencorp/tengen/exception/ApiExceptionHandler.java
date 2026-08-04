@@ -1,5 +1,7 @@
 package com.tengencorp.tengen.exception;
 
+import com.tengencorp.tengen.helper.LogSafe;
+import com.tengencorp.tengen.helper.WarningLogRateLimiter;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.http.HttpStatus;
@@ -21,6 +23,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 public class ApiExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
+    private final WarningLogRateLimiter warningLogRateLimiter = new WarningLogRateLimiter();
 
     @ExceptionHandler(NotFoundException.class)
     public ResponseEntity<ErrorResponse> notFound(NotFoundException e, HttpServletRequest request) {
@@ -71,6 +74,9 @@ public class ApiExceptionHandler {
         Throwable cause = e;
         while (cause != null) {
             if (cause instanceof RequestBodyLimitExceededException) {
+                warn("request_body_too_large", LogSafe.requestPath(request),
+                    "event=security_event name=request_body_too_large method={} path={} limit=enforced",
+                    request.getMethod(), LogSafe.requestPath(request));
                 return error(HttpStatus.PAYLOAD_TOO_LARGE,
                     "Request body exceeds the configured limit", request);
             }
@@ -81,6 +87,9 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ErrorResponse> forbidden(AccessDeniedException e, HttpServletRequest request) {
+        warn("forbidden_access", LogSafe.requestPath(request),
+            "event=security_event name=forbidden_access method={} path={} principal={}",
+            request.getMethod(), LogSafe.requestPath(request), LogSafe.principal(request));
         return error(HttpStatus.FORBIDDEN, e.getMessage(), request);
     }
 
@@ -97,9 +106,16 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> generic(Exception e, HttpServletRequest request) {
-        log.error("Unhandled API exception: method={}, path={}",
-            request.getMethod(), request.getRequestURI(), e);
+        log.error("event=api_failure name=unhandled method={} path={} principal={} exceptionType={}",
+            request.getMethod(), LogSafe.requestPath(request), LogSafe.principal(request),
+            LogSafe.exceptionType(e), e);
         return error(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error", request);
+    }
+
+    private void warn(String category, String stableKey, String message, Object... arguments) {
+        if (warningLogRateLimiter.tryAcquire(category, stableKey)) {
+            log.warn(message, arguments);
+        }
     }
 
     private ResponseEntity<ErrorResponse> error(HttpStatus status, String message, HttpServletRequest request) {

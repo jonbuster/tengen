@@ -6,11 +6,15 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.annotation.Value;
 import com.tengencorp.tengen.exception.NotFoundException;
+import com.tengencorp.tengen.helper.LogSafe;
+import com.tengencorp.tengen.helper.WarningLogRateLimiter;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -26,11 +30,14 @@ import java.time.Instant;
 @Component
 public class ApiKeyAuthFilter extends OncePerRequestFilter {
 
+    private static final Logger log = LoggerFactory.getLogger(ApiKeyAuthFilter.class);
+
     private final ApiKeyService apiKeyService;
     private final ApiKeyRateLimiter rateLimiter;
     private final long maxBodyBytes;
     private final Counter authenticationFailures;
     private final Counter rateLimited;
+    private final WarningLogRateLimiter warningLogRateLimiter = new WarningLogRateLimiter();
 
     public ApiKeyAuthFilter(ApiKeyService apiKeyService, ApiKeyRateLimiter rateLimiter,
                             MeterRegistry meterRegistry,
@@ -61,12 +68,18 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         String rawKey = request.getHeader("X-API-Key");
         if (request.getContentLengthLong() > maxBodyBytes) {
+            warn("api_key_body_too_large", "global",
+                "event=security_event name=api_key_body_too_large method={} path={} contentLength={} limit={}",
+                request.getMethod(), LogSafe.requestPath(request), request.getContentLengthLong(), maxBodyBytes);
             response.sendError(HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE,
                 "Request body exceeds the configured limit");
             return;
         }
         if (rawKey == null || rawKey.isBlank()) {
             authenticationFailures.increment();
+            warn("api_key_missing", "global",
+                "event=security_event name=api_key_missing method={} path={} reason=credential_required",
+                request.getMethod(), LogSafe.requestPath(request));
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "API key is required");
             return;
         }
@@ -77,10 +90,17 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
                     || (key.getExpiresAt() != null && !key.getExpiresAt().isAfter(Instant.now()))) {
                 response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "API key is invalid or expired");
                 authenticationFailures.increment();
+                String reason = key.isActive() ? "expired" : "inactive";
+                warn("api_key_invalid", String.valueOf(key.getId()),
+                    "event=security_event name=api_key_invalid method={} path={} keyId={} reason={}",
+                    request.getMethod(), LogSafe.requestPath(request), key.getId(), reason);
                 return;
             }
             if (!rateLimiter.tryAcquire(key.getId())) {
                 rateLimited.increment();
+                warn("api_key_rate_limited", String.valueOf(key.getId()),
+                    "event=security_event name=api_key_rate_limited method={} path={} keyId={} retryAfterSeconds=60",
+                    request.getMethod(), LogSafe.requestPath(request), key.getId());
                 response.setHeader("Retry-After", "60");
                 response.sendError(429, "API key rate limit exceeded");
                 return;
@@ -89,9 +109,18 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
                 .setAuthentication(new ApiKeyPrincipal(key.getId(), key.getName()));
         } catch (NotFoundException e) {
             authenticationFailures.increment();
+            warn("api_key_invalid", "unknown",
+                "event=security_event name=api_key_invalid method={} path={} keyId=unknown reason=not_found",
+                request.getMethod(), LogSafe.requestPath(request));
             response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "API key is invalid");
             return;
         }
         filterChain.doFilter(request, response);
+    }
+
+    private void warn(String category, String stableKey, String message, Object... arguments) {
+        if (warningLogRateLimiter.tryAcquire(category, stableKey)) {
+            log.warn(message, arguments);
+        }
     }
 }

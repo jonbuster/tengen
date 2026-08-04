@@ -137,7 +137,8 @@ public class ReplayJobControlService {
                     .tag("action", name)
                     .register(meterRegistry))
                 .increment();
-            log.info("Replay control committed: action={} jobId={} fromStatus={} toStatus={} actor={} attempt={}",
+            log.info(
+                "event=replay_control name=committed action={} jobId={} fromStatus={} toStatus={} actor={} attempt={}",
                 action, job.getId(), previous, next, actor, job.getAttemptCount());
         };
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
