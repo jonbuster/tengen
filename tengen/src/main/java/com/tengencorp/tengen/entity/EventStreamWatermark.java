@@ -35,7 +35,7 @@ public class EventStreamWatermark {
     @Column(nullable = false, length = 100)
     private String source;
 
-    @Column(name = "max_occurred_at", nullable = false)
+    @Column(name = "max_occurred_at")
     private Instant maxOccurredAt;
 
     @Column(name = "watermark_at", nullable = false)

@@ -4,12 +4,14 @@ import com.tengencorp.tengen.dto.EventHistoryDetail;
 import com.tengencorp.tengen.dto.EventHistoryPage;
 import com.tengencorp.tengen.dto.EventHistorySummary;
 import com.tengencorp.tengen.dto.EventRuleOutcomeResponse;
+import com.tengencorp.tengen.dto.AbsenceInstanceResponse;
 import com.tengencorp.tengen.dto.WebhookDeliverySummary;
 import com.tengencorp.tengen.entity.Event;
 import com.tengencorp.tengen.entity.EventTimeStatus;
 import com.tengencorp.tengen.exception.NotFoundException;
 import com.tengencorp.tengen.repository.EventRepository;
 import com.tengencorp.tengen.repository.EventRuleOutcomeRepository;
+import com.tengencorp.tengen.repository.RuleAbsenceInstanceRepository;
 import com.tengencorp.tengen.repository.WebhookOutboxRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -20,6 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 /** Read-only admin queries for Event Explorer. */
@@ -31,15 +35,18 @@ public class EventHistoryAdminService {
     private final EventRepository eventRepository;
     private final EventRuleOutcomeRepository outcomeRepository;
     private final WebhookOutboxRepository outboxRepository;
+    private final RuleAbsenceInstanceRepository absenceInstanceRepository;
     private final ObjectMapper objectMapper;
 
     public EventHistoryAdminService(EventRepository eventRepository,
                                     EventRuleOutcomeRepository outcomeRepository,
                                     WebhookOutboxRepository outboxRepository,
+                                    RuleAbsenceInstanceRepository absenceInstanceRepository,
                                     ObjectMapper objectMapper) {
         this.eventRepository = eventRepository;
         this.outcomeRepository = outcomeRepository;
         this.outboxRepository = outboxRepository;
+        this.absenceInstanceRepository = absenceInstanceRepository;
         this.objectMapper = objectMapper;
     }
 
@@ -129,7 +136,13 @@ public class EventHistoryAdminService {
             .map(outbox -> WebhookDeliverySummary.from(
                 outbox, WebhookDeliveryAdminService.safeDestination(outbox.getCallbackUrl())))
             .toList();
-        return EventHistoryDetail.from(event, outcomes, deliveries);
+        var absenceById = new LinkedHashMap<Long, AbsenceInstanceResponse>();
+        absenceInstanceRepository.findByStartEvent_IdOrderByCreatedAtAscIdAsc(id)
+            .forEach(instance -> absenceById.put(instance.getId(), AbsenceInstanceResponse.from(instance)));
+        absenceInstanceRepository.findByResolvedByEvent_IdOrderByCreatedAtAscIdAsc(id)
+            .forEach(instance -> absenceById.put(instance.getId(), AbsenceInstanceResponse.from(instance)));
+        List<AbsenceInstanceResponse> absenceInstances = new ArrayList<>(absenceById.values());
+        return EventHistoryDetail.from(event, outcomes, deliveries, absenceInstances);
     }
 
     private void validatePage(int page, int size) {

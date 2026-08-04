@@ -21,6 +21,7 @@ The project includes a REST API for event ingestion and a web-based administrati
 - **Spot important events** using conditions such as payment amount, country, status, or any field in your JSON data.
 - **Find patterns over time** with counts, sums, averages, minimums, and maximums over a time window.
 - **Detect ordered behavior** with two-to-five-step sequences, optional correlation keys, and event-time windows.
+- **Detect missing follow-up events** with event-time absence rules, optional correlation keys, and durable deadlines.
 - **Track each customer independently** by grouping activity by user, account, device, or another business field.
 - **Control notification noise** with cooldowns, rising-edge triggers, and once-per-window delivery.
 - **Send webhooks reliably** without making event producers wait for the receiving service.
@@ -43,7 +44,7 @@ An accepted event response reports which rules matched, which webhook actions we
 | --- | --- |
 | **Rules** | Create, edit, enable, disable, and delete detection rules. |
 | **Rule history** | Review immutable revisions, archive rules, and restore an earlier configuration. |
-| **Run Test** | Try an event against one or all rules without saving the event or sending webhooks. Sequence rules accept one sample event per step. |
+| **Run Test** | Try an event against one or all rules without saving the event or sending webhooks. Sequence rules accept one sample event per step; absence rules accept a starting event and an optional expected event. |
 | **API Keys** | Create scoped ingestion keys, view their status, and revoke them. Raw keys are shown only once. |
 | **Deliveries** | Filter webhook history, inspect attempts and errors, refresh the list, and retry dead-lettered deliveries. |
 | **Events** | Search accepted events, inspect their payloads, review matched-rule outcomes, and follow webhook deliveries. |
@@ -231,6 +232,7 @@ when a completed idempotent response is replayed.
 | **Condition rule** | Matches a single event using its type, source, and an Aviator expression. |
 | **Aggregate rule** | Calculates `COUNT`, `SUM`, `AVG`, `MIN`, or `MAX` over an event-time window before comparing it with a threshold. |
 | **Sequence rule** | Matches two to five ordered event steps within one event-time window; optional `groupBy` keeps progress independent per business key. |
+| **Absence rule** | Opens a durable expectation when a starting event matches and triggers only when no expected event arrives before the event-time deadline closes. |
 | **Grouping** | Maintains independent aggregate and trigger state for values such as `data.userId`. A blank group keeps the rule global. |
 | **Cooldown** | Suppresses repeated webhook actions for a configured period without changing whether the rule itself matched. |
 | **Every match** | Queues one webhook for every eligible accepted event. |

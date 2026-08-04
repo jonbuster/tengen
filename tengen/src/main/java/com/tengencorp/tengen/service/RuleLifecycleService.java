@@ -9,11 +9,13 @@ import com.tengencorp.tengen.dto.RuleSnapshot;
 import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.entity.RuleRevision;
 import com.tengencorp.tengen.entity.RuleRevisionChangeType;
+import com.tengencorp.tengen.entity.RuleAbsenceInstanceStatus;
 import com.tengencorp.tengen.entity.RuleSequenceInstanceStatus;
 import com.tengencorp.tengen.exception.ConflictException;
 import com.tengencorp.tengen.exception.NotFoundException;
 import com.tengencorp.tengen.repository.RuleActionStateRepository;
 import com.tengencorp.tengen.repository.RuleActionWindowRepository;
+import com.tengencorp.tengen.repository.RuleAbsenceInstanceRepository;
 import com.tengencorp.tengen.repository.RuleRepository;
 import com.tengencorp.tengen.repository.RuleRevisionRepository;
 import com.tengencorp.tengen.repository.RuleSequenceInstanceRepository;
@@ -39,6 +41,7 @@ public class RuleLifecycleService {
     private final RuleActionStateRepository actionStateRepository;
     private final RuleActionWindowRepository actionWindowRepository;
     private final RuleSequenceInstanceRepository sequenceInstanceRepository;
+    private final RuleAbsenceInstanceRepository absenceInstanceRepository;
     private final ObjectMapper objectMapper;
     private final RuleValidationService validationService;
 
@@ -47,6 +50,7 @@ public class RuleLifecycleService {
                                 RuleActionStateRepository actionStateRepository,
                                 RuleActionWindowRepository actionWindowRepository,
                                 RuleSequenceInstanceRepository sequenceInstanceRepository,
+                                RuleAbsenceInstanceRepository absenceInstanceRepository,
                                 ObjectMapper objectMapper,
                                 RuleValidationService validationService) {
         this.ruleRepository = ruleRepository;
@@ -54,6 +58,7 @@ public class RuleLifecycleService {
         this.actionStateRepository = actionStateRepository;
         this.actionWindowRepository = actionWindowRepository;
         this.sequenceInstanceRepository = sequenceInstanceRepository;
+        this.absenceInstanceRepository = absenceInstanceRepository;
         this.objectMapper = objectMapper;
         this.validationService = validationService;
     }
@@ -245,6 +250,11 @@ public class RuleLifecycleService {
             RuleSequenceInstanceStatus.ACTIVE,
             RuleSequenceInstanceStatus.CANCELLED,
             Instant.now());
+        absenceInstanceRepository.cancelPendingByRuleId(
+            rule.getId(),
+            RuleAbsenceInstanceStatus.PENDING,
+            RuleAbsenceInstanceStatus.CANCELLED,
+            Instant.now());
     }
 
     private void clearSequenceSteps(Rule rule) {
@@ -322,6 +332,9 @@ public class RuleLifecycleService {
             ? null : snapshot.source());
         rule.setConditionScript(snapshot.ruleType() == com.tengencorp.tengen.entity.RuleType.SEQUENCE
             ? null : snapshot.conditionScript());
+        rule.setExpectedEventType(snapshot.expectedEventType());
+        rule.setExpectedSource(snapshot.expectedSource());
+        rule.setExpectedConditionScript(snapshot.expectedConditionScript());
         rule.setWindowSeconds(snapshot.windowSeconds());
         rule.setAggType(snapshot.aggType());
         rule.setAggField(snapshot.aggField());

@@ -64,6 +64,15 @@ public class Rule {
     @Column(name = "condition_script", columnDefinition = "text")
     private String conditionScript;
 
+    @Column(name = "expected_event_type", length = 100)
+    private String expectedEventType;
+
+    @Column(name = "expected_source", length = 100)
+    private String expectedSource;
+
+    @Column(name = "expected_condition_script", columnDefinition = "text")
+    private String expectedConditionScript;
+
     @Column(name = "window_seconds")
     private Integer windowSeconds;
 

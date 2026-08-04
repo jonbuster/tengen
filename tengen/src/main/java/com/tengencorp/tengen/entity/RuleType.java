@@ -7,5 +7,7 @@ public enum RuleType {
     /** Windowed match — fires when the condition is true AND the aggregate reaches the threshold. */
     AGGREGATE,
     /** Ordered two-to-five-step match completed within an event-time window. */
-    SEQUENCE
+    SEQUENCE,
+    /** Delayed match when an expected event does not arrive before a deadline. */
+    ABSENCE
 }

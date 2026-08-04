@@ -27,6 +27,7 @@ import { formatTimestamp } from "@/lib/formatters";
 import { usePreferences } from "@/lib/preferences";
 import {
   EventHistoryDetail,
+  AbsenceInstanceStatus,
   EventRuleActionOutcome,
   EventTimeStatus,
   WebhookDeliveryStatus,
@@ -63,6 +64,7 @@ export default function EventDetailPage() {
     timestamp: summary.occurredAt,
     data: detail.data,
   };
+  const absenceInstances = detail.absenceInstances ?? [];
 
   return (
     <Container maxWidth={false} sx={{ py: 4 }}>
@@ -115,6 +117,30 @@ export default function EventDetailPage() {
           </Box>
         </Paper>
 
+        {absenceInstances.length > 0 && (
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>Absence progress</Typography>
+            <Stack spacing={1} divider={<Divider flexItem />}>
+              {absenceInstances.map((instance) => (
+                <Stack key={instance.id} direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={1}>
+                  <Box>
+                    <Typography variant="body2">{instance.ruleName} · revision {instance.ruleRevision}</Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Scope {instance.scopeKey || "global"} · deadline {formatTimestamp(instance.deadlineAt, preferences.timeDisplay)}
+                    </Typography>
+                    {instance.resolvedByEventId && (
+                      <Typography variant="caption" display="block">
+                        Satisfied by <MuiLink component={Link} href={`/events/${instance.resolvedByEventId}`}>event {instance.resolvedByEventId}</MuiLink>
+                      </Typography>
+                    )}
+                  </Box>
+                  <AbsenceStatusChip status={instance.status} />
+                </Stack>
+              ))}
+            </Stack>
+          </Paper>
+        )}
+
         <Paper variant="outlined" sx={{ p: 2 }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
             <Typography variant="subtitle1">Matched rule outcomes</Typography>
@@ -144,7 +170,7 @@ export default function EventDetailPage() {
                     </TableCell>
                     <TableCell>{rule.ruleType}</TableCell>
                     <TableCell><ActionChip outcome={rule.actionOutcome} /></TableCell>
-                    <TableCell><OutcomeDetails rule={rule} /></TableCell>
+                    <TableCell><OutcomeDetails rule={rule} timeDisplay={preferences.timeDisplay} /></TableCell>
                     <TableCell>
                       {rule.deliveryId ? (
                         <MuiLink component={Link} href={`/deliveries?eventId=${summary.id}`}>
@@ -192,7 +218,13 @@ function ActionChip({ outcome }: { outcome: EventRuleActionOutcome }) {
   return <Chip label={outcome.replaceAll("_", " ")} color={color} size="small" />;
 }
 
-function OutcomeDetails({ rule }: { rule: EventHistoryDetail["rules"][number] }) {
+function OutcomeDetails({
+  rule,
+  timeDisplay,
+}: {
+  rule: EventHistoryDetail["rules"][number];
+  timeDisplay: "local" | "utc";
+}) {
   if (rule.aggregate) {
     return (
       <Stack>
@@ -204,7 +236,22 @@ function OutcomeDetails({ rule }: { rule: EventHistoryDetail["rules"][number] })
   if (rule.sequence) {
     return <Typography variant="body2">Sequence completed ({rule.sequence.steps.length} steps) · group {rule.groupKey ?? "global"}</Typography>;
   }
+  if (rule.absence) {
+    return (
+      <Stack>
+        <Typography variant="body2">Absence triggered · group {rule.absence.groupKey ?? "global"}</Typography>
+        <Typography variant="caption" color="text.secondary">
+          No {rule.absence.expectedEventType} from {rule.absence.expectedSource} before {formatTimestamp(rule.absence.deadlineAt, timeDisplay)}
+        </Typography>
+      </Stack>
+    );
+  }
   return <Typography variant="body2">Condition matched{rule.groupKey ? ` · group ${rule.groupKey}` : ""}</Typography>;
+}
+
+function AbsenceStatusChip({ status }: { status: AbsenceInstanceStatus }) {
+  const color = status === "TRIGGERED" ? "success" : status === "SATISFIED" ? "info" : status === "CANCELLED" ? "default" : "warning";
+  return <Chip label={status} color={color} size="small" />;
 }
 
 function DeliveryStatusChip({ status }: { status: WebhookDeliveryStatus }) {

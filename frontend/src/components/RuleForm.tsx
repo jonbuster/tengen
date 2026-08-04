@@ -35,7 +35,7 @@ import {
 } from "@/lib/conditionBuilder";
 import { Rule, RuleAction, RuleRequest, RuleType, SequenceStep, TriggerMode } from "@/lib/types";
 
-const RULE_TYPES: RuleType[] = ["CONDITION", "AGGREGATE", "SEQUENCE"];
+const RULE_TYPES: RuleType[] = ["CONDITION", "AGGREGATE", "SEQUENCE", "ABSENCE"];
 const ACTIONS: RuleAction[] = ["LOG", "WEBHOOK"];
 const AGG_TYPES = ["COUNT", "SUM", "AVG", "MIN", "MAX"];
 const TRIGGER_MODES: { value: TriggerMode; label: string }[] = [
@@ -138,6 +138,8 @@ function toRequest(
   values: Record<string, string>,
   condition: ConditionGroup,
   conditionMode: "builder" | "raw",
+  expectedCondition: ConditionGroup,
+  expectedConditionMode: "builder" | "raw",
   steps: DraftSequenceStep[],
 ): RuleRequest {
   const ruleType = values.ruleType as RuleType;
@@ -160,10 +162,18 @@ function toRequest(
         : conditionMode === "builder"
           ? generateAviator(condition)
           : values.conditionScript.trim(),
+    expectedEventType: ruleType === "ABSENCE" ? values.expectedEventType : null,
+    expectedSource: ruleType === "ABSENCE" ? values.expectedSource : null,
+    expectedConditionScript: ruleType === "ABSENCE"
+      ? expectedConditionMode === "builder"
+        ? generateAviator(expectedCondition)
+        : values.expectedConditionScript.trim()
+      : null,
     windowSeconds: values.windowSeconds ? Number(values.windowSeconds) : null,
     aggType: ruleType === "AGGREGATE" ? (values.aggType as RuleRequest["aggType"]) : null,
     aggField: ruleType === "AGGREGATE" ? values.aggField || null : null,
-    groupBy: ruleType === "AGGREGATE" || ruleType === "SEQUENCE" ? values.groupBy || null : null,
+    groupBy: ruleType === "AGGREGATE" || ruleType === "SEQUENCE" || ruleType === "ABSENCE"
+      ? values.groupBy || null : null,
     threshold: values.threshold ? Number(values.threshold) : 0,
     active: values.active === "true",
     sequenceSteps: ruleType === "SEQUENCE"
@@ -190,6 +200,9 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
     eventType: initial?.eventType ?? "",
     source: initial?.source ?? "",
     conditionScript: initial?.conditionScript ?? "",
+    expectedEventType: initial?.expectedEventType ?? "",
+    expectedSource: initial?.expectedSource ?? "",
+    expectedConditionScript: initial?.expectedConditionScript ?? "",
     windowSeconds: initial?.windowSeconds?.toString() ?? "",
     aggType: initial?.aggType ?? "",
     aggField: initial?.aggField ?? "",
@@ -206,6 +219,16 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
   const [conditionMode, setConditionMode] = useState<"builder" | "raw">(() => {
     if (!initial?.conditionScript) return "builder";
     return parseAviator(initial.conditionScript) ? "builder" : "raw";
+  });
+  const [expectedCondition, setExpectedCondition] = useState<ConditionGroup>(() => {
+    if (initial?.expectedConditionScript) {
+      return parseAviator(initial.expectedConditionScript) ?? createGroup("AND");
+    }
+    return createGroup("AND");
+  });
+  const [expectedConditionMode, setExpectedConditionMode] = useState<"builder" | "raw">(() => {
+    if (!initial?.expectedConditionScript) return "builder";
+    return parseAviator(initial.expectedConditionScript) ? "builder" : "raw";
   });
   const [sequenceSteps, setSequenceSteps] = useState<DraftSequenceStep[]>(() => {
     const configured = initial?.sequenceSteps ?? [];
@@ -253,6 +276,7 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
     event.preventDefault();
     setError(null);
     const isSequence = values.ruleType === "SEQUENCE";
+    const isAbsence = values.ruleType === "ABSENCE";
     if (!isSequence && conditionMode === "builder" && !generateAviator(condition).trim()) {
       setError("Add at least one condition in the visual builder.");
       return;
@@ -269,8 +293,24 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
         return;
       }
     }
+    if (isAbsence) {
+      const expectedScript = expectedConditionMode === "builder"
+        ? generateAviator(expectedCondition)
+        : values.expectedConditionScript.trim();
+      if (!values.expectedEventType.trim() || !values.expectedSource.trim() || !expectedScript.trim()) {
+        setError("Complete the expected event type, source, and condition for an absence rule.");
+        return;
+      }
+    }
     try {
-      await onSubmit(toRequest(values, condition, conditionMode, sequenceSteps));
+      await onSubmit(toRequest(
+        values,
+        condition,
+        conditionMode,
+        expectedCondition,
+        expectedConditionMode,
+        sequenceSteps,
+      ));
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Could not save rule");
     }
@@ -278,9 +318,10 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
 
   const isAggregate = values.ruleType === "AGGREGATE";
   const isSequence = values.ruleType === "SEQUENCE";
+  const isAbsence = values.ruleType === "ABSENCE";
   const isWebhook = values.action === "WEBHOOK";
-  const triggerModes = isSequence
-    ? TRIGGER_MODES.filter((mode) => mode.value !== "ONCE_PER_WINDOW")
+  const triggerModes = isSequence || isAbsence
+    ? TRIGGER_MODES.filter((mode) => mode.value === "EVERY_MATCH")
     : TRIGGER_MODES;
 
   return (
@@ -312,14 +353,45 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
         {!isSequence && (
           <>
             <Grid item xs={12} sm={6}>
-              <TextField label="Event Type" value={values.eventType} onChange={set("eventType")} fullWidth required />
+              <TextField label={isAbsence ? "Starting event type" : "Event Type"} value={values.eventType} onChange={set("eventType")} fullWidth required />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <TextField label="Source" value={values.source} onChange={set("source")} fullWidth required />
+              <TextField label={isAbsence ? "Starting source" : "Source"} value={values.source} onChange={set("source")} fullWidth required />
             </Grid>
           </>
         )}
       </Grid>
+
+      {isAbsence && (
+        <>
+          <Typography variant="subtitle1">Expected event</Typography>
+          <Typography variant="body2" color="text.secondary">
+            The rule triggers only when this event does not arrive before the event-time window closes.
+          </Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <TextField label="Expected event type" value={values.expectedEventType} onChange={set("expectedEventType")} fullWidth required />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField label="Expected source" value={values.expectedSource} onChange={set("expectedSource")} fullWidth required />
+            </Grid>
+            <Grid item xs={12}>
+              <ConditionEditor
+                label="Expected event condition"
+                condition={expectedCondition}
+                mode={expectedConditionMode}
+                script={values.expectedConditionScript}
+                onChange={(nextCondition, nextMode, script) => {
+                  setExpectedCondition(nextCondition);
+                  setExpectedConditionMode(nextMode);
+                  setValues((current) => ({ ...current, expectedConditionScript: script }));
+                }}
+                onInvalid={setError}
+              />
+            </Grid>
+          </Grid>
+        </>
+      )}
 
       {isWebhook && (
         <Accordion disableGutters>
@@ -467,6 +539,26 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
                 onChange={set("groupBy")}
                 fullWidth
                 InputProps={{ endAdornment: <InputAdornment position="end"><FieldInfo title="Optional shared correlation path, such as data.userId. Leave blank for a global sequence." /></InputAdornment> }}
+              />
+            </Grid>
+          </Grid>
+        </>
+      )}
+
+      {isAbsence && (
+        <>
+          <Typography variant="subtitle1">Absence window</Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={4}>
+              <TextField label="Window (seconds)" type="number" inputProps={{ min: 1 }} value={values.windowSeconds} onChange={set("windowSeconds")} fullWidth required />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="Group by field"
+                value={values.groupBy}
+                onChange={set("groupBy")}
+                fullWidth
+                InputProps={{ endAdornment: <InputAdornment position="end"><FieldInfo title="Optional. Use a unique key such as data.orderId for concurrent expectations." /></InputAdornment> }}
               />
             </Grid>
           </Grid>

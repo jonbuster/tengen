@@ -1,6 +1,7 @@
 package com.tengencorp.tengen.service;
 
 import com.tengencorp.tengen.dto.AggregateResult;
+import com.tengencorp.tengen.dto.AbsenceResult;
 import com.tengencorp.tengen.dto.EventRequest;
 import com.tengencorp.tengen.dto.SequenceResult;
 import com.tengencorp.tengen.entity.Event;
@@ -82,6 +83,42 @@ public class WebhookOutboxService {
         return new EnqueueResult(outboxRepository.save(outbox), true);
     }
 
+    /** Enqueue the delayed action for one triggered absence instance. */
+    public EnqueueResult enqueueAbsence(Rule rule, Event event, AbsenceResult absence) {
+        String scopeKey = absence.groupKey() != null ? absence.groupKey() : GLOBAL_SCOPE;
+        String deduplicationKey = "ABSENCE:rule=" + rule.getId()
+            + ":revision=" + rule.getEffectiveRevision()
+            + ":instance=" + absence.instanceId();
+
+        var existing = outboxRepository.findByDeduplicationKey(deduplicationKey);
+        if (existing.isPresent()) {
+            return new EnqueueResult(existing.get(), false);
+        }
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("event", eventPayload(event));
+        payload.put("status", "accepted");
+        payload.put("matched", true);
+        payload.put("rules", List.of(rule.getName()));
+        payload.put("aggregates", Map.of());
+        payload.put("sequences", Map.of());
+        payload.put("absences", Map.of(rule.getName(), absencePayload(absence)));
+
+        WebhookOutbox outbox = new WebhookOutbox(
+            event,
+            rule.getId(),
+            rule.getName(),
+            rule.getCallbackUrl(),
+            payload,
+            scopeKey,
+            TriggerMode.EVERY_MATCH,
+            null,
+            rule.getEffectiveRevision(),
+            rule.getCooldownSeconds(),
+            deduplicationKey);
+        return new EnqueueResult(outboxRepository.save(outbox), true);
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> jsonMap(Object value) {
         try {
@@ -89,6 +126,31 @@ public class WebhookOutboxService {
         } catch (Exception exception) {
             throw new IllegalStateException("Could not serialize webhook payload", exception);
         }
+    }
+
+    private Map<String, Object> eventPayload(Event event) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("type", event.getType());
+        result.put("source", event.getSource());
+        result.put("timestamp", event.getOccurredAt());
+        result.put("data", event.getData());
+        return result;
+    }
+
+    private Map<String, Object> absencePayload(AbsenceResult absence) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("instanceId", absence.instanceId());
+        result.put("groupKey", absence.groupKey());
+        result.put("startEventId", absence.startEventId());
+        result.put("startOccurredAt",
+            absence.startOccurredAt() != null ? absence.startOccurredAt().toString() : null);
+        result.put("expectedEventType", absence.expectedEventType());
+        result.put("expectedSource", absence.expectedSource());
+        result.put("deadlineAt",
+            absence.deadlineAt() != null ? absence.deadlineAt().toString() : null);
+        result.put("triggeringWatermark",
+            absence.triggeringWatermark() != null ? absence.triggeringWatermark().toString() : null);
+        return result;
     }
 
     private String deduplicationKey(Rule rule, Event event, String scopeKey,

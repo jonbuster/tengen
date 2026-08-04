@@ -104,4 +104,17 @@ public class Event {
         this.queuedActionCount = queuedActions;
         this.suppressedActionCount = suppressedActions;
     }
+
+    /** Add a delayed outcome to the trace after an absence deadline closes. */
+    public void recordDelayedProcessingTrace(int matchedRules, int queuedActions,
+                                             int suppressedActions) {
+        if (processingTraceVersion == null) {
+            recordProcessingTrace(matchedRules, queuedActions, suppressedActions);
+            return;
+        }
+        matchedRuleCount = (matchedRuleCount != null ? matchedRuleCount : 0) + matchedRules;
+        queuedActionCount = (queuedActionCount != null ? queuedActionCount : 0) + queuedActions;
+        suppressedActionCount = (suppressedActionCount != null ? suppressedActionCount : 0)
+            + suppressedActions;
+    }
 }

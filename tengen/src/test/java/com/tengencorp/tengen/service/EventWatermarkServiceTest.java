@@ -81,6 +81,18 @@ class EventWatermarkServiceTest {
         assertThat(state.getWatermarkAt()).isEqualTo(WATERMARK);
     }
 
+    @Test
+    void idleAdvancementMovesWatermarkWithoutInventingObservedEventTime() {
+        EventStreamWatermark state = state(null, WATERMARK);
+        EventStreamWatermarkRepository repository = proxy(0, state);
+
+        Instant advanced = service(repository, 300).advanceIdle(
+            "payment.completed", "billing", Instant.parse("2026-08-03T10:20:00Z"));
+
+        assertThat(advanced).isEqualTo(Instant.parse("2026-08-03T10:15:00Z"));
+        assertThat(state.getMaxOccurredAt()).isNull();
+    }
+
     private EventWatermarkService service(EventStreamWatermarkRepository repository,
                                           long allowedLatenessSeconds) {
         return new EventWatermarkService(repository, allowedLatenessSeconds);
@@ -92,6 +104,7 @@ class EventWatermarkServiceTest {
             new Class<?>[] {EventStreamWatermarkRepository.class},
             (ignored, method, arguments) -> switch (method.getName()) {
                 case "ensureExists" -> ensureResult;
+                case "ensureIdleExists" -> 0;
                 case "findForUpdate" -> Optional.of(state);
                 default -> throw new UnsupportedOperationException(method.getName());
             });

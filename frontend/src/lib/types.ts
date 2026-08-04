@@ -1,10 +1,11 @@
-export type RuleType = "CONDITION" | "AGGREGATE" | "SEQUENCE";
+export type RuleType = "CONDITION" | "AGGREGATE" | "SEQUENCE" | "ABSENCE";
 export type RuleAction = "LOG" | "WEBHOOK";
 export type AggregateType = "COUNT" | "SUM" | "AVG" | "MIN" | "MAX";
 export type TriggerMode = "EVERY_MATCH" | "EDGE" | "ONCE_PER_WINDOW";
 export type RuleValidationStatus = "VALID" | "INVALID";
 export type ResponseMode = "FULL" | "COMPACT";
 export type EventTimeStatus = "ON_TIME" | "LATE_ACCEPTED" | "TOO_LATE";
+export type AbsenceInstanceStatus = "PENDING" | "SATISFIED" | "TRIGGERED" | "CANCELLED";
 
 export interface SequenceStep {
   position: number;
@@ -24,6 +25,9 @@ export interface Rule {
   eventType: string | null;
   source: string | null;
   conditionScript: string | null;
+  expectedEventType: string | null;
+  expectedSource: string | null;
+  expectedConditionScript: string | null;
   windowSeconds: number | null;
   aggType: AggregateType | null;
   aggField: string | null;
@@ -68,6 +72,9 @@ export interface RuleSnapshot {
   eventType: string | null;
   source: string | null;
   conditionScript: string | null;
+  expectedEventType: string | null;
+  expectedSource: string | null;
+  expectedConditionScript: string | null;
   windowSeconds: number | null;
   aggType: AggregateType | null;
   aggField: string | null;
@@ -102,6 +109,9 @@ export interface RuleRequest {
   eventType?: string | null;
   source?: string | null;
   conditionScript: string;
+  expectedEventType?: string | null;
+  expectedSource?: string | null;
+  expectedConditionScript?: string | null;
   windowSeconds?: number | null;
   aggType?: AggregateType | null;
   aggField?: string | null;
@@ -115,6 +125,7 @@ export interface RuleTestRequest {
   mode: "single" | "all";
   ruleId?: number;
   eventJson: string;
+  absenceExpectedEventJson?: string;
   sequenceEventJsons?: string[];
 }
 
@@ -132,6 +143,28 @@ export interface RuleResult {
   sequence: SequenceResult | null;
 }
 
+export interface AbsenceResult {
+  instanceId: number | null;
+  groupKey: string | null;
+  startEventId: number | null;
+  startOccurredAt: string;
+  expectedEventType: string;
+  expectedSource: string;
+  deadlineAt: string;
+  triggeringWatermark: string | null;
+}
+
+export interface AbsenceTestResult {
+  startMatched: boolean;
+  expectedMatched: boolean;
+  correlationMatched: boolean;
+  orderingValid: boolean;
+  withinWindow: boolean;
+  outcome: string;
+  groupKey: string | null;
+  absence: AbsenceResult | null;
+}
+
 export interface TestResult {
   rule: Rule | null;
   matched: boolean | null;
@@ -142,6 +175,7 @@ export interface TestResult {
   results: RuleResult[] | null;
   anyMatched: boolean | null;
   sequenceTest: SequenceTestResult | null;
+  absenceTest: AbsenceTestResult | null;
 }
 
 export interface AggregateResult {
@@ -264,6 +298,7 @@ export interface EventRuleOutcomeResponse {
   groupKey: string | null;
   aggregate: AggregateResult | null;
   sequence: SequenceResult | null;
+  absence: AbsenceResult | null;
   actionOutcome: EventRuleActionOutcome;
   suppressionReason: string | null;
   deliveryId: number | null;
@@ -282,6 +317,23 @@ export interface EventHistoryDetail {
   data: Record<string, unknown>;
   rules: EventRuleOutcomeResponse[];
   deliveries: WebhookDeliverySummary[];
+  absenceInstances: AbsenceInstanceResponse[];
+}
+
+export interface AbsenceInstanceResponse {
+  id: number;
+  ruleId: number;
+  ruleRevision: number;
+  ruleName: string;
+  scopeKey: string;
+  startEventId: number;
+  startOccurredAt: string;
+  deadlineAt: string;
+  status: AbsenceInstanceStatus;
+  resolvedByEventId: number | null;
+  resolvedAt: string | null;
+  deliveryId: number | null;
+  suppressionReason: string | null;
 }
 
 export interface ApiKey {

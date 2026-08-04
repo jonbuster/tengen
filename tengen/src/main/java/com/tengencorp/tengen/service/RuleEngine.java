@@ -71,6 +71,11 @@ public class RuleEngine {
     }
 
     private RuleEvaluation evaluateInternal(Event event, Rule rule, boolean persist) {
+        if (rule.getRuleType() == RuleType.ABSENCE) {
+            // Absence rules are opened/satisfied by AbsenceRuleService and only
+            // become matches when their event-time deadline closes.
+            return new RuleEvaluation(false, null);
+        }
         if (rule.getRuleType() == RuleType.SEQUENCE) {
             return sequenceRuleService.evaluate(event, rule, persist);
         }

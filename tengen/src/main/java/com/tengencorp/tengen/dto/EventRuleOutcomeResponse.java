@@ -15,6 +15,7 @@ public record EventRuleOutcomeResponse(
         String groupKey,
         AggregateResult aggregate,
         SequenceResult sequence,
+        AbsenceResult absence,
         EventRuleActionOutcome actionOutcome,
         String suppressionReason,
         Long deliveryId) {
@@ -24,6 +25,8 @@ public record EventRuleOutcomeResponse(
             ? null : objectMapper.convertValue(outcome.getAggregateResult(), AggregateResult.class);
         SequenceResult sequence = outcome.getSequenceResult() == null
             ? null : objectMapper.convertValue(outcome.getSequenceResult(), SequenceResult.class);
+        AbsenceResult absence = outcome.getAbsenceResult() == null
+            ? null : objectMapper.convertValue(outcome.getAbsenceResult(), AbsenceResult.class);
         return new EventRuleOutcomeResponse(
             outcome.getId(),
             outcome.getRuleId(),
@@ -33,6 +36,7 @@ public record EventRuleOutcomeResponse(
             outcome.getGroupKey(),
             aggregate,
             sequence,
+            absence,
             outcome.getActionOutcome(),
             outcome.getSuppressionReason(),
             outcome.getDeliveryId());

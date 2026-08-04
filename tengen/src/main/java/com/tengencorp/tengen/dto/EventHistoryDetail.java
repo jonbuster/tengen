@@ -10,11 +10,14 @@ public record EventHistoryDetail(
         EventHistorySummary event,
         Map<String, Object> data,
         List<EventRuleOutcomeResponse> rules,
-        List<WebhookDeliverySummary> deliveries) {
+        List<WebhookDeliverySummary> deliveries,
+        List<AbsenceInstanceResponse> absenceInstances) {
 
     public static EventHistoryDetail from(Event event,
                                           List<EventRuleOutcomeResponse> rules,
-                                          List<WebhookDeliverySummary> deliveries) {
-        return new EventHistoryDetail(EventHistorySummary.from(event), event.getData(), rules, deliveries);
+                                          List<WebhookDeliverySummary> deliveries,
+                                          List<AbsenceInstanceResponse> absenceInstances) {
+        return new EventHistoryDetail(
+            EventHistorySummary.from(event), event.getData(), rules, deliveries, absenceInstances);
     }
 }

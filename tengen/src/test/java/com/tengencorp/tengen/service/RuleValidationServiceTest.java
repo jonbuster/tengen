@@ -6,6 +6,7 @@ import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.entity.RuleAction;
 import com.tengencorp.tengen.entity.RuleType;
 import com.tengencorp.tengen.entity.RuleSequenceStep;
+import com.tengencorp.tengen.entity.TriggerMode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -80,6 +81,40 @@ class RuleValidationServiceTest {
         rule.getSequenceSteps().add(new RuleSequenceStep(rule, 2, "b", "source", "true"));
         validationService.validate(rule);
         assertThat(rule.getSequenceSteps()).hasSize(2);
+    }
+
+    @Test
+    void absenceRequiresExpectedRouteAndWindow() {
+        Rule rule = baseRule();
+        rule.setRuleType(RuleType.ABSENCE);
+
+        assertThatThrownBy(() -> validationService.validate(rule))
+            .hasMessageContaining("expected event type");
+
+        rule.setExpectedEventType("payment.completed");
+        rule.setExpectedSource("billing");
+        rule.setExpectedConditionScript("data.status == 'completed'");
+        assertThatThrownBy(() -> validationService.validate(rule))
+            .hasMessageContaining("windowSeconds");
+
+        rule.setWindowSeconds(60);
+        validationService.validate(rule);
+    }
+
+    @Test
+    void absenceWebhookRejectsNonEveryMatchTriggerMode() {
+        Rule rule = baseRule();
+        rule.setRuleType(RuleType.ABSENCE);
+        rule.setExpectedEventType("payment.completed");
+        rule.setExpectedSource("billing");
+        rule.setExpectedConditionScript("data.status == 'completed'");
+        rule.setWindowSeconds(60);
+        rule.setAction(RuleAction.WEBHOOK);
+        rule.setCallbackUrl("https://example.com/hook");
+        rule.setTriggerMode(TriggerMode.EDGE);
+
+        assertThatThrownBy(() -> validationService.validate(rule))
+            .hasMessageContaining("EVERY_MATCH");
     }
 
     private Rule baseRule() {

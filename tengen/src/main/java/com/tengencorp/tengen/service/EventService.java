@@ -53,6 +53,7 @@ public class EventService {
     private final ApiKeyRepository apiKeyRepository;
     private final RuleRepository ruleRepository;
     private final RuleEngine ruleEngine;
+    private final AbsenceRuleService absenceRuleService;
     private final WebhookOutboxService webhookOutboxService;
     private final WebhookCooldownService webhookCooldownService;
     private final ApiKeyService apiKeyService;
@@ -71,6 +72,7 @@ public class EventService {
 
     public EventService(EventRepository eventRepository, ApiKeyRepository apiKeyRepository,
                         RuleRepository ruleRepository, RuleEngine ruleEngine,
+                        AbsenceRuleService absenceRuleService,
                         WebhookOutboxService webhookOutboxService,
                         WebhookCooldownService webhookCooldownService, ApiKeyService apiKeyService,
                         EventIdempotencyRepository eventIdempotencyRepository,
@@ -84,6 +86,7 @@ public class EventService {
         this.apiKeyRepository = apiKeyRepository;
         this.ruleRepository = ruleRepository;
         this.ruleEngine = ruleEngine;
+        this.absenceRuleService = absenceRuleService;
         this.webhookOutboxService = webhookOutboxService;
         this.webhookCooldownService = webhookCooldownService;
         this.apiKeyService = apiKeyService;
@@ -216,7 +219,7 @@ public class EventService {
         }
 
         List<Rule> activeRules = ruleRepository.findActiveRulesForEvent(
-            event.getType(), event.getSource(), RuleType.SEQUENCE);
+            event.getType(), event.getSource(), RuleType.SEQUENCE, RuleType.ABSENCE);
         List<String> matchedRuleNames = new ArrayList<>();
         List<String> queuedRuleNames = new ArrayList<>();
         List<String> suppressedRuleNames = new ArrayList<>();
@@ -225,6 +228,13 @@ public class EventService {
         List<EventRuleOutcome> outcomes = new ArrayList<>();
 
         for (Rule rule : activeRules) {
+            if (rule.getRuleType() == RuleType.ABSENCE) {
+                // Absence starts and satisfactions are durable progress changes,
+                // not logical matches. The delayed match is finalized by the
+                // absence worker after the expected stream watermark closes.
+                absenceRuleService.process(event, rule);
+                continue;
+            }
             RuleEvaluation evaluation = ruleEngine.evaluate(event, rule);
             boolean currentMatch = evaluation.matched(rule);
             if (isEdgeWebhook(rule) && hasTriggerScope(event, rule, evaluation)) {

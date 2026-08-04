@@ -1,6 +1,7 @@
 package com.tengencorp.tengen.entity;
 
 import com.tengencorp.tengen.dto.AggregateResult;
+import com.tengencorp.tengen.dto.AbsenceResult;
 import com.tengencorp.tengen.dto.SequenceResult;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -72,6 +73,10 @@ public class EventRuleOutcome {
     @Column(name = "sequence_result", columnDefinition = "jsonb")
     private Map<String, Object> sequenceResult;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "absence_result", columnDefinition = "jsonb")
+    private Map<String, Object> absenceResult;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "action_outcome", nullable = false, length = 30)
     private EventRuleActionOutcome actionOutcome;
@@ -91,6 +96,16 @@ public class EventRuleOutcome {
                             AggregateResult aggregateResult, SequenceResult sequenceResult,
                             EventRuleActionOutcome actionOutcome, String suppressionReason,
                             Long deliveryId) {
+        this(event, ruleId, ruleRevision, ruleName, ruleType, groupKey,
+            aggregateResult, sequenceResult, null, actionOutcome, suppressionReason, deliveryId);
+    }
+
+    public EventRuleOutcome(Event event, Long ruleId, int ruleRevision, String ruleName,
+                            RuleType ruleType, String groupKey,
+                            AggregateResult aggregateResult, SequenceResult sequenceResult,
+                            AbsenceResult absenceResult,
+                            EventRuleActionOutcome actionOutcome, String suppressionReason,
+                            Long deliveryId) {
         this.event = event;
         this.ruleId = ruleId;
         this.ruleRevision = ruleRevision;
@@ -99,6 +114,7 @@ public class EventRuleOutcome {
         this.groupKey = groupKey;
         this.aggregateResult = aggregateResult != null ? toMap(aggregateResult) : null;
         this.sequenceResult = sequenceResult != null ? toMap(sequenceResult) : null;
+        this.absenceResult = absenceResult != null ? toMap(absenceResult) : null;
         this.actionOutcome = actionOutcome;
         this.suppressionReason = suppressionReason;
         this.deliveryId = deliveryId;
@@ -133,6 +149,20 @@ public class EventRuleOutcome {
                     step.occurredAt() != null ? step.occurredAt().toString() : null);
                 return stepResult;
             }).toList());
+            return result;
+        }
+        if (value instanceof AbsenceResult absence) {
+            result.put("instanceId", absence.instanceId());
+            result.put("groupKey", absence.groupKey());
+            result.put("startEventId", absence.startEventId());
+            result.put("startOccurredAt",
+                absence.startOccurredAt() != null ? absence.startOccurredAt().toString() : null);
+            result.put("expectedEventType", absence.expectedEventType());
+            result.put("expectedSource", absence.expectedSource());
+            result.put("deadlineAt",
+                absence.deadlineAt() != null ? absence.deadlineAt().toString() : null);
+            result.put("triggeringWatermark",
+                absence.triggeringWatermark() != null ? absence.triggeringWatermark().toString() : null);
             return result;
         }
         throw new IllegalArgumentException("Unsupported event rule outcome snapshot");

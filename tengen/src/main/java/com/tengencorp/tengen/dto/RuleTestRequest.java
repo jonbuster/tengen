@@ -24,6 +24,9 @@ public record RuleTestRequest(
         @Size(max = 1048576, message = "eventJson must be at most 1048576 characters")
         String eventJson,
 
+        @Size(max = 1048576, message = "absenceExpectedEventJson must be at most 1048576 characters")
+        String absenceExpectedEventJson,
+
         @Size(max = 5, message = "At most five sequence events may be supplied")
         List<@Size(max = 1048576, message = "Sequence event JSON must be at most 1048576 characters") String>
         sequenceEventJsons) {

@@ -79,6 +79,8 @@ export default function RulesPage() {
       width: 150,
       renderCell: (params) => params.row.ruleType === "SEQUENCE"
         ? `SEQUENCE (${params.row.sequenceSteps?.length ?? 0})`
+        : params.row.ruleType === "ABSENCE"
+          ? "ABSENCE"
         : params.value,
     },
     {
@@ -88,7 +90,9 @@ export default function RulesPage() {
       minWidth: 180,
       valueGetter: (_value, row: Rule) => row.ruleType === "SEQUENCE"
         ? (row.sequenceSteps ?? []).map((step) => step.eventType).join(" → ")
-        : `${row.eventType ?? ""} / ${row.source ?? ""}`,
+        : row.ruleType === "ABSENCE"
+          ? `${row.eventType ?? ""} → no ${row.expectedEventType ?? ""} (${row.windowSeconds ?? "?"}s)`
+          : `${row.eventType ?? ""} / ${row.source ?? ""}`,
     },
     { field: "action", headerName: "Action", width: 110 },
     {

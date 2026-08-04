@@ -55,6 +55,8 @@ public class RuleValidationService {
         require(rule.getAction() != null, "Action is required");
         if (rule.getRuleType() == RuleType.SEQUENCE) {
             validateSequence(rule);
+        } else if (rule.getRuleType() == RuleType.ABSENCE) {
+            validateAbsence(rule);
         } else {
             require(rule.getEventType() != null && !rule.getEventType().isBlank(), "Event type is required");
             require(rule.getSource() != null && !rule.getSource().isBlank(), "Source is required");
@@ -74,6 +76,11 @@ public class RuleValidationService {
             }
         }
 
+        if (rule.getRuleType() == RuleType.ABSENCE) {
+            require(rule.getWindowSeconds() != null && rule.getWindowSeconds() > 0,
+                "Absence windowSeconds must be positive");
+        }
+
         if (rule.getAction() == RuleAction.WEBHOOK) {
             destinationValidator.validateSyntax(rule.getCallbackUrl());
             require(rule.getCooldownSeconds() == null || rule.getCooldownSeconds() >= 0,
@@ -82,7 +89,24 @@ public class RuleValidationService {
                 require(rule.getRuleType() == RuleType.AGGREGATE,
                     "ONCE_PER_WINDOW requires an aggregate rule");
             }
+            if (rule.getRuleType() == RuleType.ABSENCE) {
+                require(rule.getEffectiveTriggerMode() == TriggerMode.EVERY_MATCH,
+                    "Absence webhook rules must use EVERY_MATCH trigger mode");
+            }
         }
+    }
+
+    private void validateAbsence(Rule rule) {
+        require(rule.getEventType() != null && !rule.getEventType().isBlank(),
+            "Absence starting event type is required");
+        require(rule.getSource() != null && !rule.getSource().isBlank(),
+            "Absence starting source is required");
+        validateExpression(rule.getConditionScript(), "Absence starting condition");
+        require(rule.getExpectedEventType() != null && !rule.getExpectedEventType().isBlank(),
+            "Absence expected event type is required");
+        require(rule.getExpectedSource() != null && !rule.getExpectedSource().isBlank(),
+            "Absence expected source is required");
+        validateExpression(rule.getExpectedConditionScript(), "Absence expected condition");
     }
 
     private void validateSequence(Rule rule) {

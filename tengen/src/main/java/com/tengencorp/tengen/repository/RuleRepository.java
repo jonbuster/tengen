@@ -24,15 +24,19 @@ public interface RuleRepository extends JpaRepository<Rule, Long> {
         select distinct rule from Rule rule
         left join rule.sequenceSteps step
         where rule.active = true and rule.archivedAt is null
-          and ((rule.ruleType <> :sequenceType
+          and ((rule.ruleType <> :sequenceType and rule.ruleType <> :absenceType
                 and rule.eventType = :eventType and rule.source = :source)
             or (rule.ruleType = :sequenceType
-                and step.eventType = :eventType and step.source = :source))
+                and step.eventType = :eventType and step.source = :source)
+            or (rule.ruleType = :absenceType
+                and ((rule.eventType = :eventType and rule.source = :source)
+                  or (rule.expectedEventType = :eventType and rule.expectedSource = :source))))
         order by rule.name asc
         """)
     List<Rule> findActiveRulesForEvent(@Param("eventType") String eventType,
                                        @Param("source") String source,
-                                       @Param("sequenceType") RuleType sequenceType);
+                                       @Param("sequenceType") RuleType sequenceType,
+                                       @Param("absenceType") RuleType absenceType);
 
     List<Rule> findByArchivedAtIsNullOrderByNameAsc();
 

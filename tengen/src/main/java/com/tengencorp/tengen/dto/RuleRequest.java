@@ -46,6 +46,14 @@ public record RuleRequest(
 
         String conditionScript,
 
+        @Size(max = 100, message = "Expected event type must be at most 100 characters")
+        String expectedEventType,
+
+        @Size(max = 100, message = "Expected source must be at most 100 characters")
+        String expectedSource,
+
+        String expectedConditionScript,
+
         Integer windowSeconds,
 
         AggregateType aggType,
@@ -79,12 +87,17 @@ public record RuleRequest(
         rule.setEventType(ruleType == RuleType.SEQUENCE ? null : eventType);
         rule.setSource(ruleType == RuleType.SEQUENCE ? null : source);
         rule.setConditionScript(ruleType == RuleType.SEQUENCE ? null : conditionScript);
-        rule.setWindowSeconds(ruleType == RuleType.AGGREGATE || ruleType == RuleType.SEQUENCE
+        rule.setExpectedEventType(ruleType == RuleType.ABSENCE ? expectedEventType : null);
+        rule.setExpectedSource(ruleType == RuleType.ABSENCE ? expectedSource : null);
+        rule.setExpectedConditionScript(ruleType == RuleType.ABSENCE ? expectedConditionScript : null);
+        rule.setWindowSeconds(ruleType == RuleType.AGGREGATE
+            || ruleType == RuleType.SEQUENCE || ruleType == RuleType.ABSENCE
             ? windowSeconds : null);
         rule.setAggType(ruleType == RuleType.AGGREGATE ? aggType : null);
         rule.setAggField(ruleType == RuleType.AGGREGATE && aggType != AggregateType.COUNT
             ? AggregateFieldPath.normalize(aggField) : null);
         rule.setGroupBy(ruleType == RuleType.AGGREGATE || ruleType == RuleType.SEQUENCE
+            || ruleType == RuleType.ABSENCE
             ? AggregateFieldPath.normalize(groupBy) : null);
         rule.setThreshold(threshold != null ? threshold : 0.0);
         rule.setActive(active);

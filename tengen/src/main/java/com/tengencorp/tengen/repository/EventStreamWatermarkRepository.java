@@ -26,6 +26,18 @@ public interface EventStreamWatermarkRepository extends JpaRepository<EventStrea
                      @Param("watermarkAt") Instant watermarkAt,
                      @Param("now") Instant now);
 
+    @Modifying
+    @Query(value = """
+        insert into event_stream_watermarks
+            (event_type, source, max_occurred_at, watermark_at, created_at, updated_at)
+        values (:eventType, :source, null, :watermarkAt, :now, :now)
+        on conflict (source, event_type) do nothing
+        """, nativeQuery = true)
+    int ensureIdleExists(@Param("eventType") String eventType,
+                         @Param("source") String source,
+                         @Param("watermarkAt") Instant watermarkAt,
+                         @Param("now") Instant now);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
         select state from EventStreamWatermark state

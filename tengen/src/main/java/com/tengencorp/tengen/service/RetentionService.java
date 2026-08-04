@@ -87,6 +87,13 @@ public class RetentionService {
                   AND updated_at < ? LIMIT ?
             )
             """, cutoff));
+        deleted.put("rule_absence_instances", drain("""
+            DELETE FROM rule_absence_instances WHERE id IN (
+                SELECT id FROM rule_absence_instances
+                WHERE status IN ('SATISFIED', 'TRIGGERED', 'CANCELLED')
+                  AND updated_at < ? LIMIT ?
+            )
+            """, cutoff));
         deleted.put("rule_action_windows", drain("""
             DELETE FROM rule_action_windows WHERE id IN (
                 SELECT id FROM rule_action_windows
@@ -101,6 +108,11 @@ public class RetentionService {
                   AND NOT EXISTS (
                       SELECT 1 FROM rule_sequence_instance_events sequence_event
                       WHERE sequence_event.event_id = event.id
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM rule_absence_instances absence_instance
+                      WHERE absence_instance.start_event_id = event.id
+                        AND absence_instance.status = 'PENDING'
                   )
                   AND NOT EXISTS (SELECT 1 FROM webhook_outbox outbox WHERE outbox.event_id = event.id)
                   AND NOT EXISTS (SELECT 1 FROM event_idempotency idem WHERE idem.event_id = event.id)

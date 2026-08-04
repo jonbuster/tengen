@@ -9,6 +9,7 @@ import com.tengencorp.tengen.dto.RuleRevisionPage;
 import com.tengencorp.tengen.dto.RuleTestRequest;
 import com.tengencorp.tengen.dto.RuleTestResponse;
 import com.tengencorp.tengen.dto.SequenceTestResult;
+import com.tengencorp.tengen.dto.AbsenceTestResult;
 import com.tengencorp.tengen.entity.Event;
 import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.helper.EventJsonParser;
@@ -16,6 +17,7 @@ import com.tengencorp.tengen.repository.RuleRepository;
 import com.tengencorp.tengen.service.RuleEngine;
 import com.tengencorp.tengen.service.RuleLifecycleService;
 import com.tengencorp.tengen.service.SequenceRuleService;
+import com.tengencorp.tengen.service.AbsenceRuleService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -47,16 +49,19 @@ public class RuleAdminController {
     private final EventJsonParser eventJsonParser;
     private final RuleLifecycleService lifecycleService;
     private final SequenceRuleService sequenceRuleService;
+    private final AbsenceRuleService absenceRuleService;
 
     public RuleAdminController(RuleRepository ruleRepository, RuleEngine ruleEngine,
                                EventJsonParser eventJsonParser,
                                RuleLifecycleService lifecycleService,
-                               SequenceRuleService sequenceRuleService) {
+                               SequenceRuleService sequenceRuleService,
+                               AbsenceRuleService absenceRuleService) {
         this.ruleRepository = ruleRepository;
         this.ruleEngine = ruleEngine;
         this.eventJsonParser = eventJsonParser;
         this.lifecycleService = lifecycleService;
         this.sequenceRuleService = sequenceRuleService;
+        this.absenceRuleService = absenceRuleService;
     }
 
     @GetMapping
@@ -161,6 +166,14 @@ public class RuleAdminController {
             throw new IllegalArgumentException("ruleId is required in single mode");
         }
         Rule rule = lifecycleService.find(request.ruleId());
+        if (rule.getRuleType() == com.tengencorp.tengen.entity.RuleType.ABSENCE) {
+            Event startEvent = parseRequiredEvent(request.eventJson());
+            Event expectedEvent = request.absenceExpectedEventJson() == null
+                || request.absenceExpectedEventJson().isBlank()
+                ? null : eventJsonParser.parse(request.absenceExpectedEventJson());
+            AbsenceTestResult absenceTest = absenceRuleService.test(startEvent, expectedEvent, rule);
+            return RuleTestResponse.singleAbsence(rule, absenceTest, startEvent);
+        }
         if (rule.getRuleType() == com.tengencorp.tengen.entity.RuleType.SEQUENCE
                 && request.sequenceEventJsons() != null
                 && !request.sequenceEventJsons().isEmpty()) {

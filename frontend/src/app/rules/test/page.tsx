@@ -51,10 +51,20 @@ const DEFAULT_SEQUENCE_EVENT_JSONS = [
 }`,
 ];
 
+const DEFAULT_ABSENCE_EXPECTED_EVENT_JSON = `{
+  "type": "payment.completed",
+  "source": "payment-api",
+  "timestamp": "2026-07-31T15:35:00Z",
+  "data": {
+    "orderId": "order-123"
+  }
+}`;
+
 export default function TestPage() {
   const [mode, setMode] = useState<"single" | "all">("single");
   const [ruleId, setRuleId] = useState<number | "">("");
   const [eventJson, setEventJson] = useState(DEFAULT_EVENT_JSON);
+  const [absenceExpectedEventJson, setAbsenceExpectedEventJson] = useState(DEFAULT_ABSENCE_EXPECTED_EVENT_JSON);
   const [sequenceEventJsons, setSequenceEventJsons] = useState(DEFAULT_SEQUENCE_EVENT_JSONS);
 
   const { data: rules = [] } = useQuery<Rule[]>({
@@ -64,12 +74,14 @@ export default function TestPage() {
 
   const selectedRule = rules.find((rule) => rule.id === ruleId);
   const isSequenceTest = mode === "single" && selectedRule?.ruleType === "SEQUENCE";
+  const isAbsenceTest = mode === "single" && selectedRule?.ruleType === "ABSENCE";
   const sequenceSteps = selectedRule?.sequenceSteps ?? [];
 
   const mutation = useMutation<TestResult, Error, {
     mode: "single" | "all";
     ruleId?: number;
     eventJson: string;
+    absenceExpectedEventJson?: string;
     sequenceEventJsons?: string[];
   }>({
     mutationFn: async (payload) => (await api.post("/rules/test", payload)).data,
@@ -86,6 +98,7 @@ export default function TestPage() {
         ? sequencePayload[sequencePayload.length - 1]
         : eventJson,
       sequenceEventJsons: sequencePayload,
+      absenceExpectedEventJson: isAbsenceTest ? absenceExpectedEventJson : undefined,
     });
   };
 
@@ -139,6 +152,31 @@ export default function TestPage() {
               />
             ))}
           </Stack>
+        ) : isAbsenceTest ? (
+          <Stack spacing={2}>
+            <Typography variant="body2" color="text.secondary">
+              Supply the starting event and optionally an expected event. The simulation does not persist either event or trigger actions.
+            </Typography>
+            <TextField
+              label="Starting event JSON"
+              value={eventJson}
+              onChange={(event) => setEventJson(event.target.value)}
+              fullWidth
+              multiline
+              minRows={8}
+              sx={{ fontFamily: "monospace" }}
+            />
+            <TextField
+              label="Expected event JSON (optional)"
+              value={absenceExpectedEventJson}
+              onChange={(event) => setAbsenceExpectedEventJson(event.target.value)}
+              fullWidth
+              multiline
+              minRows={8}
+              sx={{ fontFamily: "monospace" }}
+              helperText="Clear this field to simulate an absence that would trigger after the deadline closes."
+            />
+          </Stack>
         ) : (
           <TextField
             label="Event JSON"
@@ -171,6 +209,11 @@ export default function TestPage() {
           {mode === "single" && result.rule?.ruleType === "SEQUENCE" && result.sequenceTest && (
             <Alert severity={result.sequenceTest.matched ? "success" : "info"} sx={{ mb: 2 }}>
               Sequence {result.sequenceTest.matched ? "matched" : "did not match"}. Conditions: {result.sequenceTest.steps.filter((step) => step.conditionMatched).length}/{result.sequenceTest.steps.length}; correlation: {result.sequenceTest.correlationMatched ? "ok" : "failed"}; ordering: {result.sequenceTest.orderingValid ? "ok" : "failed"}; window: {result.sequenceTest.withinWindow ? "ok" : "expired"}.
+            </Alert>
+          )}
+          {mode === "single" && result.rule?.ruleType === "ABSENCE" && result.absenceTest && (
+            <Alert severity={result.absenceTest.outcome === "WOULD_BE_SATISFIED" ? "success" : "info"} sx={{ mb: 2 }}>
+              Absence simulation: {result.absenceTest.outcome.replaceAll("_", " ")}. Start: {result.absenceTest.startMatched ? "matched" : "not matched"}; expected event: {result.absenceTest.expectedMatched ? "matched" : "not matched"}; correlation: {result.absenceTest.correlationMatched ? "ok" : "failed"}; ordering: {result.absenceTest.orderingValid ? "ok" : "failed"}; window: {result.absenceTest.withinWindow ? "ok" : "expired"}.
             </Alert>
           )}
           {mode === "single" ? (

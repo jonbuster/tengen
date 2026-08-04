@@ -20,23 +20,38 @@ public record RuleTestResponse(
         String groupKey,
         Event event,
         SequenceTestResult sequenceTest,
+        AbsenceTestResult absenceTest,
         List<RuleResult> results,
         Boolean anyMatched) {
 
     public static RuleTestResponse single(Rule rule, boolean matched, boolean conditionMatched,
                                           Double aggregateValue, String groupKey, Event event) {
         return new RuleTestResponse(RuleResponse.from(rule), matched, conditionMatched,
-            aggregateValue, groupKey, event, null, null, null);
+            aggregateValue, groupKey, event, null, null, null, null);
     }
 
     public static RuleTestResponse singleSequence(Rule rule, SequenceTestResult sequenceTest,
                                                   Event event) {
         return new RuleTestResponse(RuleResponse.from(rule), sequenceTest.matched(),
             sequenceTest.steps().stream().anyMatch(SequenceStepTestResult::conditionMatched),
-            null, sequenceTest.groupKey(), event, sequenceTest, null, null);
+            null, sequenceTest.groupKey(), event, sequenceTest, null, null, null);
+    }
+
+    public static RuleTestResponse singleAbsence(Rule rule, AbsenceTestResult absenceTest,
+                                                 Event event) {
+        return new RuleTestResponse(RuleResponse.from(rule),
+            "WOULD_BE_SATISFIED".equals(absenceTest.outcome()),
+            absenceTest.startMatched(),
+            null,
+            absenceTest.groupKey(),
+            event,
+            null,
+            absenceTest,
+            null,
+            null);
     }
 
     public static RuleTestResponse all(List<RuleResult> results, boolean anyMatched, Event event) {
-        return new RuleTestResponse(null, null, null, null, null, event, null, results, anyMatched);
+        return new RuleTestResponse(null, null, null, null, null, event, null, null, results, anyMatched);
     }
 }
