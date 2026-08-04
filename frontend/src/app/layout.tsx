@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Paper } from "@mui/material";
+import { Box, Link, Paper, Typography } from "@mui/material";
 import { usePathname } from "next/navigation";
 import { AppThemeProvider } from "@/theme";
 import { Providers } from "./providers";
@@ -22,15 +22,57 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <AuthProvider>
                 <Box sx={{ display: "flex", minHeight: "100vh" }}>
                   <NavBar />
-                  <Box component="main" sx={{ flexGrow: 1, minWidth: 0, bgcolor: "background.default" }}>
+                  <Box
+                    component="main"
+                    sx={{
+                      flexGrow: 1,
+                      minWidth: 0,
+                      minHeight: "100vh",
+                      display: "flex",
+                      flexDirection: "column",
+                      bgcolor: "background.default",
+                    }}
+                  >
                     {isLogin ? (
                       children
                     ) : (
-                      <Box sx={{ width: "100%", px: { xs: 1, sm: 2, md: 3 }, py: { xs: 1, md: 2 } }}>
+                      <Box
+                        sx={{
+                          width: "100%",
+                          flexGrow: 1,
+                          px: { xs: 1, sm: 2, md: 3 },
+                          py: { xs: 1, md: 2 },
+                        }}
+                      >
                         <Paper elevation={1} sx={{ width: "100%", borderRadius: 2, overflow: "hidden" }}>
                           {children}
                         </Paper>
                       </Box>
+                    )}
+                    {!isLogin && (
+                      <Typography
+                        component="footer"
+                        variant="caption"
+                        align="center"
+                        color="text.secondary"
+                        sx={{ px: 2, pb: 2 }}
+                      >
+                        <Link
+                          href="https://github.com/jonbuster/tengen"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Tengen
+                        </Link>{" "}
+                        software is made by{" "}
+                        <Link
+                          href="https://github.com/jonbuster"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          jonbuster
+                        </Link>
+                      </Typography>
                     )}
                   </Box>
                 </Box>
