@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Box, Button, Paper, TextField, Typography, darken, useTheme } from "@mui/material";
+import { Alert, Box, Button, Link, Paper, TextField, Typography, darken, useTheme } from "@mui/material";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
@@ -35,6 +35,7 @@ export default function LoginPage() {
       sx={{
         minHeight: "100vh",
         display: "flex",
+        flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
         background: gradient,
@@ -75,6 +76,29 @@ export default function LoginPage() {
           </Button>
         </Box>
       </Paper>
+      <Typography
+        component="footer"
+        variant="caption"
+        sx={{ mt: 2, color: "rgba(255, 255, 255, 0.78)" }}
+      >
+        <Link
+          href="https://github.com/jonbuster/tengen"
+          target="_blank"
+          rel="noopener noreferrer"
+          sx={{ color: "inherit" }}
+        >
+          Tengen
+        </Link>{" "}
+        software is made by{" "}
+        <Link
+          href="https://github.com/jonbuster"
+          target="_blank"
+          rel="noopener noreferrer"
+          sx={{ color: "inherit" }}
+        >
+          jonbuster
+        </Link>
+      </Typography>
     </Box>
   );
 }
