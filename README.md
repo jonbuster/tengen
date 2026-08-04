@@ -43,9 +43,13 @@ Local admin credentials: `admin` / `admin`
 
 ## Screenshots
 
-Screenshots will be added here.
+![Deliveries, replay, RabbitMQ connector, and API keys](<assets/ChatGPT Image Aug 4, 2026, 11_27_23 PM.png>)
 
-<!-- Add application screenshots here -->
+![Rules, rule testing, Event Explorer, and settings](<assets/ChatGPT Image Aug 4, 2026, 11_29_19 PM.png>)
+
+![Rule creation, test results, event details, and delivery details](<assets/ChatGPT Image Aug 4, 2026, 11_34_41 PM.png>)
+
+![Replay details, RabbitMQ configuration, replay history, and login](<assets/ChatGPT Image Aug 4, 2026, 11_37_27 PM.png>)
 
 ## Features
 
