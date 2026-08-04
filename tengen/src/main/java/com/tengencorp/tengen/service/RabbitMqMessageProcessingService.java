@@ -77,7 +77,9 @@ public class RabbitMqMessageProcessingService {
             return new DeliveryResult(true, null);
         }
 
-        var result = eventService.processRabbitMq(request, connector.getApiKey().getId(), connector);
+        boolean applyWatermark = RabbitMqWatermarkPolicy.shouldApply(properties);
+        var result = eventService.processRabbitMq(
+            request, connector.getApiKey().getId(), connector, applyWatermark);
         RabbitMqMessageReceipt receipt = receiptRepository
             .findByConnector_IdAndQueueNameAndMessageId(
                 connector.getId(), connector.getQueueName(), messageId)

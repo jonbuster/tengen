@@ -86,6 +86,10 @@ public class Event {
     @Column(name = "watermark_at_decision")
     private Instant watermarkAtDecision;
 
+    /** Whether watermark processing was applied; null for legacy rows. */
+    @Column(name = "watermark_applied")
+    private Boolean watermarkApplied;
+
     @PrePersist
     void onCreate() {
         if (occurredAt == null) {

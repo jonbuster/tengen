@@ -201,6 +201,17 @@ public class EventService {
     @Transactional
     public EventIngestionResult processRabbitMq(EventRequest request, Long apiKeyId,
                                                 RabbitMqConnector connector) {
+        return processRabbitMq(request, apiKeyId, connector, true);
+    }
+
+    /**
+     * Processes a RabbitMQ event with optional event-time watermarking. The
+     * default path keeps watermarking enabled for compatibility.
+     */
+    @Transactional
+    public EventIngestionResult processRabbitMq(EventRequest request, Long apiKeyId,
+                                                RabbitMqConnector connector,
+                                                boolean applyWatermark) {
         if (apiKeyId == null) {
             throw new RabbitMqConnectorException("API_KEY_INVALID", "The connector API key is invalid");
         }
@@ -226,29 +237,34 @@ public class EventService {
                 "The event is outside the connector API key scope");
         }
 
-        ProcessingResult result = processEvent(request, apiKey, IngestionOrigin.RABBITMQ, connector);
+        ProcessingResult result = processEvent(
+            request, apiKey, IngestionOrigin.RABBITMQ, connector, applyWatermark);
         return new EventIngestionResult(result.response(), false, result.response(), result.event());
     }
 
     private ProcessingResult processEvent(EventRequest request, ApiKey apiKey) {
-        return processEvent(request, apiKey, IngestionOrigin.HTTP, null);
+        return processEvent(request, apiKey, IngestionOrigin.HTTP, null, true);
     }
 
     private ProcessingResult processEvent(EventRequest request, ApiKey apiKey,
                                           IngestionOrigin origin,
-                                          RabbitMqConnector connector) {
+                                          RabbitMqConnector connector,
+                                          boolean applyWatermark) {
         Instant occurredAt = request.timestamp() != null ? request.timestamp() : Instant.now();
-        EventTimeDecision eventTimeDecision = eventWatermarkService.classify(
-            request.type(), request.source(), occurredAt);
+        EventTimeDecision eventTimeDecision = applyWatermark
+            ? eventWatermarkService.classify(request.type(), request.source(), occurredAt)
+            : null;
         Event event = new Event(request.type(), request.source(), occurredAt, request.data(),
             apiKey);
         event.setIngestionOrigin(origin);
         event.setRabbitMqConnector(connector);
-        event.setEventTimeStatus(eventTimeDecision.status());
-        event.setWatermarkAtDecision(eventTimeDecision.watermarkAtDecision());
+        event.setWatermarkApplied(applyWatermark);
+        event.setEventTimeStatus(eventTimeDecision != null ? eventTimeDecision.status() : null);
+        event.setWatermarkAtDecision(
+            eventTimeDecision != null ? eventTimeDecision.watermarkAtDecision() : null);
         event = eventRepository.save(event);
 
-        if (eventTimeDecision.status() == EventTimeStatus.TOO_LATE) {
+        if (eventTimeDecision != null && eventTimeDecision.status() == EventTimeStatus.TOO_LATE) {
             recordEventTimeMetric(eventTimeDecision.status());
             acceptedEvents.increment();
             event.recordProcessingTrace(0, 0, 0);
@@ -341,7 +357,9 @@ public class EventService {
         eventRuleOutcomeRepository.saveAll(outcomes);
         event.recordProcessingTrace(
             matchedRuleNames.size(), queuedRuleNames.size(), suppressedRuleNames.size());
-        recordEventTimeMetric(eventTimeDecision.status());
+        if (eventTimeDecision != null) {
+            recordEventTimeMetric(eventTimeDecision.status());
+        }
         acceptedEvents.increment();
         if (matched) {
             matchedEvents.increment();
@@ -357,7 +375,7 @@ public class EventService {
                 aggregates,
                 sequences,
                 suppressedRuleNames,
-                eventTimeDecision.status()));
+                eventTimeDecision != null ? eventTimeDecision.status() : null));
     }
 
     private void recordEventTimeMetric(EventTimeStatus status) {

@@ -393,6 +393,7 @@ export interface EventHistorySummary {
   suppressedActionCount: number | null;
   eventTimeStatus: EventTimeStatus | null;
   watermarkAtDecision: string | null;
+  watermarkApplied?: boolean | null;
   ingestionOrigin?: IngestionOrigin | null;
   connectorId?: number | null;
   connectorName?: string | null;

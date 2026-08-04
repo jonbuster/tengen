@@ -110,6 +110,11 @@ export default function EventDetailPage() {
                 ? formatTimestamp(summary.watermarkAtDecision, preferences.timeDisplay)
                 : "Not available"}
             </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Watermark processing: {summary.watermarkApplied === false
+                ? "Skipped (explicit opt-out)"
+                : summary.watermarkApplied === true ? "Applied" : "Unknown / legacy"}
+            </Typography>
           </Stack>
         </Paper>
         <Paper variant="outlined" sx={{ p: 2 }}>

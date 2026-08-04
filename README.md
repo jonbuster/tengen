@@ -147,6 +147,14 @@ original delivery is acknowledged afterward. Receipts follow the global
 operational retention period, so publishers must not reuse a message ID within
 that retention horizon.
 
+RabbitMQ event-time watermarking is enabled by default. Producers may explicitly
+opt out for an event by setting the AMQP header
+`x-tengen-watermark: false`. Missing, malformed, or non-`false` values keep
+watermark processing enabled. An opted-out event is still API-key validated,
+persisted, and evaluated against rules, but it does not create or update a
+watermark and has no event-time lateness classification. This is a processing
+hint, not a security control.
+
 For a manual smoke test, create an active API key scoped to `payment` and
 `billing`, configure the connector with the values above, then Save draft →
 Test connection → Enable consumption in **Connectors · RabbitMQ**. Publish a
@@ -156,10 +164,34 @@ message with `message_id`, `content_type=application/json`, and this body:
 {"type":"payment","source":"billing","data":{"amount":2500,"country":"PH"}}
 ```
 
+To verify watermark header behavior end to end, load the ignored `.env` into
+the shell and run the focused Python smoke test. It publishes one event with
+no header, one with `x-tengen-watermark: false`, and one with
+`x-tengen-watermark: true`, then checks RabbitMQ metrics and Event Explorer:
+
+```bash
+set -a
+source .env
+set +a
+/tmp/tengen-amqp-venv/bin/python python_test/amqp_watermark_test.py
+```
+
 The accepted event should appear in **Events** with origin `RabbitMQ` and a
 detail panel showing the queue and message ID. Reusing the same `message_id`
 must not create a second event; malformed messages should appear in the
 configured dead-letter queue.
+
+The incremental test in
+[`python_test/amqp_ramp_test.py`](python_test/amqp_ramp_test.py) alternates
+between the default watermark behavior and explicit `false` by default. It
+also cycles through multiple event types and sources so events do not all
+share one watermark stream. The defaults are `payment,refund,invoice,shipment`
+and `billing,orders,subscriptions,shipping`; override them with
+`RABBITMQ_EVENT_TYPES` and `RABBITMQ_SOURCES` when needed. The test prints the
+number of messages sent with each header mode for every stage. Use
+`RABBITMQ_WATERMARK_PATTERN=absent,false,true` for a custom repeating pattern;
+setting `RABBITMQ_WATERMARK=true` or `false` makes every ramp message use that
+single value.
 
 ### Important development commands
 

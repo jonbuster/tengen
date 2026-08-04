@@ -36,11 +36,15 @@ public class RabbitMqRuntimeManager {
     private final RabbitMqMessageProcessingService processingService;
     private final RabbitMqDeadLetterService deadLetterService;
     private final long listenerShutdownTimeoutMs;
+    private final int listenerConsumerCount;
+    private final int listenerPrefetchCount;
     private final Map<Long, RuntimeHandle> handles = new ConcurrentHashMap<>();
     private final Counter acceptedCounter;
     private final Counter deduplicatedCounter;
     private final Counter retriedCounter;
     private final Counter deadLetteredCounter;
+    private final Counter watermarkAppliedCounter;
+    private final Counter watermarkSkippedCounter;
 
     public RabbitMqRuntimeManager(
             RabbitMqConnectorRepository connectorRepository,
@@ -48,12 +52,16 @@ public class RabbitMqRuntimeManager {
             RabbitMqMessageProcessingService processingService,
             RabbitMqDeadLetterService deadLetterService,
             MeterRegistry meterRegistry,
-            @Value("${tengen.rabbitmq.shutdown-timeout-ms:5000}") long listenerShutdownTimeoutMs) {
+            @Value("${tengen.rabbitmq.shutdown-timeout-ms:5000}") long listenerShutdownTimeoutMs,
+            @Value("${tengen.rabbitmq.consumers:1}") int listenerConsumerCount,
+            @Value("${tengen.rabbitmq.prefetch:1}") int listenerPrefetchCount) {
         this.connectorRepository = connectorRepository;
         this.connectionService = connectionService;
         this.processingService = processingService;
         this.deadLetterService = deadLetterService;
         this.listenerShutdownTimeoutMs = Math.max(500, Math.min(30_000, listenerShutdownTimeoutMs));
+        this.listenerConsumerCount = bounded(listenerConsumerCount, 1, 32);
+        this.listenerPrefetchCount = bounded(listenerPrefetchCount, 1, 1_000);
         this.acceptedCounter = Counter.builder("tengen.rabbitmq.messages")
             .tag("result", "accepted").description("RabbitMQ messages accepted").register(meterRegistry);
         this.deduplicatedCounter = Counter.builder("tengen.rabbitmq.messages")
@@ -62,6 +70,12 @@ public class RabbitMqRuntimeManager {
             .tag("result", "retried").description("RabbitMQ processing retries").register(meterRegistry);
         this.deadLetteredCounter = Counter.builder("tengen.rabbitmq.messages")
             .tag("result", "dead_lettered").description("RabbitMQ messages dead-lettered").register(meterRegistry);
+        this.watermarkAppliedCounter = Counter.builder("tengen.rabbitmq.watermark")
+            .tag("result", "applied").description("RabbitMQ messages processed with watermarking")
+            .register(meterRegistry);
+        this.watermarkSkippedCounter = Counter.builder("tengen.rabbitmq.watermark")
+            .tag("result", "skipped").description("RabbitMQ messages processed without watermarking")
+            .register(meterRegistry);
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -107,9 +121,9 @@ public class RabbitMqRuntimeManager {
             container = new SimpleMessageListenerContainer(factory);
             container.setQueueNames(connector.getQueueName());
             container.setAcknowledgeMode(AcknowledgeMode.MANUAL);
-            container.setPrefetchCount(1);
-            container.setConcurrentConsumers(1);
-            container.setMaxConcurrentConsumers(1);
+            container.setPrefetchCount(listenerPrefetchCount);
+            container.setConcurrentConsumers(listenerConsumerCount);
+            container.setMaxConcurrentConsumers(listenerConsumerCount);
             container.setAutoStartup(false);
             container.setAutoDeclare(false);
             container.setMissingQueuesFatal(true);
@@ -201,6 +215,11 @@ public class RabbitMqRuntimeManager {
                     deduplicatedCounter.increment();
                 } else {
                     acceptedCounter.increment();
+                    if (Boolean.FALSE.equals(result.event().getWatermarkApplied())) {
+                        watermarkSkippedCounter.increment();
+                    } else {
+                        watermarkAppliedCounter.increment();
+                    }
                 }
                 channel.basicAck(message.getMessageProperties().getDeliveryTag(), false);
                 return;
@@ -310,6 +329,10 @@ public class RabbitMqRuntimeManager {
         if (factory != null) {
             try { factory.destroy(); } catch (Exception ignored) { }
         }
+    }
+
+    private int bounded(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
     }
 
     private record RuntimeHandle(SimpleMessageListenerContainer container,

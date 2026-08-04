@@ -22,6 +22,7 @@ public record EventHistorySummary(
         Integer suppressedActionCount,
         EventTimeStatus eventTimeStatus,
         Instant watermarkAtDecision,
+        Boolean watermarkApplied,
         IngestionOrigin ingestionOrigin,
         Long connectorId,
         String connectorName) {
@@ -34,7 +35,7 @@ public record EventHistorySummary(
                                 Instant watermarkAtDecision) {
         this(id, type, source, occurredAt, receivedAt, apiKeyId, apiKeyName, apiKeyPrefix,
             traceAvailable, matchedRuleCount, queuedActionCount, suppressedActionCount,
-            eventTimeStatus, watermarkAtDecision, IngestionOrigin.HTTP, null, null);
+            eventTimeStatus, watermarkAtDecision, null, IngestionOrigin.HTTP, null, null);
     }
 
     public static EventHistorySummary from(Event event) {
@@ -56,6 +57,7 @@ public record EventHistorySummary(
             traceAvailable ? event.getSuppressedActionCount() : null,
             event.getEventTimeStatus(),
             event.getWatermarkAtDecision(),
+            event.getWatermarkApplied(),
             event.getIngestionOrigin() != null ? event.getIngestionOrigin() : IngestionOrigin.HTTP,
             connector != null ? connector.getId() : null,
             connector != null ? connector.getDisplayName() : null);
