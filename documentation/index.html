@@ -1,0 +1,1181 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0b1f3a">
+    <meta name="description" content="Tengen developer and operator documentation">
+    <title>Tengen Documentation</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="site-shell">
+      <aside class="sidebar" id="sidebar" aria-label="Documentation navigation">
+        <div class="sidebar-header">
+          <a class="brand" href="#top" aria-label="Tengen documentation home">
+            <img src="../assets/tengen-torii-24.png" alt="" width="24" height="24">
+            <span>Tengen <small>Docs</small></span>
+          </a>
+          <button class="sidebar-close" id="sidebar-close" type="button" aria-label="Close navigation">&times;</button>
+        </div>
+        <p class="sidebar-intro">Developer and operator guide for the event processing console.</p>
+
+        <label class="sidebar-search" for="doc-search">
+          <span aria-hidden="true">/</span>
+          <input id="doc-search" type="search" placeholder="Search docs" autocomplete="off">
+          <kbd>Ctrl K</kbd>
+        </label>
+        <p class="search-status" id="search-status" aria-live="polite"></p>
+
+        <nav class="doc-nav" id="doc-nav">
+          <div class="nav-group">
+            <p class="nav-label">Start here</p>
+            <a href="#getting-started" data-nav>Getting started</a>
+            <a href="#concepts" data-nav>Core concepts</a>
+            <a href="#console-tour" data-nav>Console tour</a>
+          </div>
+          <div class="nav-group">
+            <p class="nav-label">Ingest events</p>
+            <a href="#http-ingestion" data-nav>HTTP ingestion</a>
+            <a href="#rabbitmq-ingestion" data-nav>RabbitMQ ingestion</a>
+            <a href="#event-time" data-nav>Event time and lateness</a>
+          </div>
+          <div class="nav-group">
+            <p class="nav-label">Build rules</p>
+            <a href="#rule-builder" data-nav>Rule builder</a>
+            <a href="#condition-rules" data-nav>Condition rules</a>
+            <a href="#aggregate-rules" data-nav>Aggregate rules</a>
+            <a href="#sequence-rules" data-nav>Sequence rules</a>
+            <a href="#absence-rules" data-nav>Absence rules</a>
+            <a href="#testing-rules" data-nav>Testing rules</a>
+            <a href="#rule-lifecycle" data-nav>Lifecycle and history</a>
+          </div>
+          <div class="nav-group">
+            <p class="nav-label">Operate</p>
+            <a href="#webhooks" data-nav>Webhook actions</a>
+            <a href="#api-keys" data-nav>API keys</a>
+            <a href="#event-explorer" data-nav>Event Explorer</a>
+            <a href="#replays" data-nav>Replay and backfill</a>
+            <a href="#settings-security" data-nav>Settings and security</a>
+            <a href="#configuration" data-nav>Configuration</a>
+            <a href="#production" data-nav>Production checklist</a>
+          </div>
+          <div class="nav-group">
+            <p class="nav-label">Reference</p>
+            <a href="#glossary" data-nav>Glossary</a>
+            <a href="#api-reference" data-nav>API reference</a>
+          </div>
+        </nav>
+
+        <div class="sidebar-footer">
+          <button class="theme-toggle" id="theme-toggle" type="button" aria-pressed="false">
+            <span aria-hidden="true">&#9788;</span>
+            <span>Switch theme</span>
+          </button>
+          <a href="../README.md">Back to README</a>
+        </div>
+      </aside>
+
+      <div class="content-shell">
+        <header class="topbar">
+          <button class="menu-toggle" id="menu-toggle" type="button" aria-label="Open navigation" aria-expanded="false">
+            <span></span><span></span><span></span>
+          </button>
+          <div class="breadcrumbs"><span>Tengen</span><span>/</span><strong>Documentation</strong></div>
+          <div class="topbar-actions">
+            <a class="topbar-link" href="../README.md">README</a>
+            <a class="topbar-link" href="../LICENSE">MIT License</a>
+          </div>
+        </header>
+
+        <main class="main-content" id="top">
+          <section class="hero doc-section" data-title="Tengen documentation developer operator guide">
+            <div class="hero-copy">
+              <p class="eyebrow">Event processing platform</p>
+              <h1>Turn incoming events into reliable actions.</h1>
+              <p class="hero-lede">
+                Tengen accepts business events over HTTP or RabbitMQ, evaluates them against configurable rules, and delivers durable webhook actions. This guide covers the complete console workflow from the first event to production operations.
+              </p>
+              <div class="hero-actions">
+                <a class="button button-primary" href="#getting-started">Start the tutorial</a>
+                <a class="button button-secondary" href="#api-reference">Browse the API</a>
+              </div>
+            </div>
+            <div class="hero-panel" aria-label="Documentation scope">
+              <div class="hero-panel-top"><span class="status-dot"></span><span>Current feature set</span></div>
+              <div class="hero-stat-grid">
+                <div><strong>2</strong><span>ingestion paths</span></div>
+                <div><strong>4</strong><span>rule types</span></div>
+                <div><strong>1</strong><span>durable outbox</span></div>
+                <div><strong>0</strong><span>webhooks from replay</span></div>
+              </div>
+              <div class="hero-code-line"><span class="code-key">event</span><span class="code-punc">.</span><span class="code-value">accepted</span><span class="code-punc"> -&gt; </span><span class="code-value">evaluated</span><span class="code-punc"> -&gt; </span><span class="code-value">action</span></div>
+            </div>
+          </section>
+
+          <div class="notice notice-info">
+            <span class="notice-icon">i</span>
+            <div><strong>How to use this guide.</strong> Follow the sections in order for a first setup. The API reference is intentionally last so the product workflow stays the primary path.</div>
+          </div>
+
+          <section class="doc-section" id="getting-started" data-title="getting started local development quick start">
+            <div class="section-heading">
+              <p class="eyebrow">01 / Start here</p>
+              <h2>Getting started</h2>
+              <p>Run the supporting services, start the two application layers, and create the first event-processing workflow.</p>
+            </div>
+
+            <div class="grid grid-3 compact-cards">
+              <article class="mini-card"><span class="card-number">01</span><h3>Start infrastructure</h3><p>PostgreSQL and the optional RabbitMQ broker run in Docker.</p></article>
+              <article class="mini-card"><span class="card-number">02</span><h3>Start Tengen</h3><p>Run the Spring Boot backend and Next.js admin console separately.</p></article>
+              <article class="mini-card"><span class="card-number">03</span><h3>Build a workflow</h3><p>Create an API key, create a rule, then send a JSON event.</p></article>
+            </div>
+
+            <div class="content-grid two-up">
+              <div>
+                <h3>Prerequisites</h3>
+                <ul class="check-list">
+                  <li>Docker with Docker Compose</li>
+                  <li>Java 21</li>
+                  <li>Node.js and npm</li>
+                </ul>
+                <h3>Start local dependencies</h3>
+                <div class="code-wrap"><pre><code>docker compose -f tengen/docker-compose.yml --profile rabbitmq up -d db rabbitmq</code></pre></div>
+              </div>
+              <div>
+                <h3>Start the backend</h3>
+                <div class="code-wrap"><pre><code>cd tengen
+./mvnw spring-boot:run</code></pre></div>
+                <h3>Start the frontend</h3>
+                <div class="code-wrap"><pre><code>cd frontend
+npm ci
+npm run dev</code></pre></div>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Service</th><th>Local address</th><th>Purpose</th></tr></thead>
+                <tbody>
+                  <tr><td>Admin console</td><td><code>http://localhost:3000</code></td><td>Rules, events, deliveries, replay, connectors, keys, and settings.</td></tr>
+                  <tr><td>Backend API</td><td><code>http://localhost:8080</code></td><td>Event ingestion and admin API.</td></tr>
+                  <tr><td>RabbitMQ AMQP</td><td><code>localhost:5672</code></td><td>Optional broker connection.</td></tr>
+                  <tr><td>RabbitMQ management</td><td><code>http://localhost:15672</code></td><td>Local broker administration; defaults are <code>tengen</code> / <code>tengen</code>.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="notice notice-warning">
+              <span class="notice-icon">!</span>
+              <div>The development admin login defaults to <code>admin</code> / <code>admin</code>. Change <code>ADMIN_PASSWORD</code>, <code>JWT_SECRET</code>, and <code>WEBHOOK_SIGNING_SECRET</code> before using the application outside local development.</div>
+            </div>
+
+            <h3>First workflow</h3>
+            <ol class="step-list">
+              <li><strong>Sign in.</strong> Open the admin console and use the configured admin credentials.</li>
+              <li><strong>Create an ingestion key.</strong> Open <strong>API Keys</strong>, choose a name, and optionally scope event types and sources.</li>
+              <li><strong>Create a rule.</strong> Start with a condition rule and use <code>data.amount &gt;= 1000</code> as the condition.</li>
+              <li><strong>Send an event.</strong> Use the HTTP example in the next section with the raw key shown once at creation time.</li>
+              <li><strong>Inspect the result.</strong> Use <strong>Events</strong> to see the accepted event, rule outcome, event-time status, and any webhook delivery.</li>
+            </ol>
+          </section>
+
+          <section class="doc-section" id="concepts" data-title="core concepts event envelope processing flow">
+            <div class="section-heading">
+              <p class="eyebrow">02 / Understand the model</p>
+              <h2>Core concepts</h2>
+              <p>Everything in Tengen is organized around an event envelope, a rule revision, and a durable action outcome.</p>
+            </div>
+
+            <div class="content-grid two-up align-start">
+              <div>
+                <h3>The event envelope</h3>
+                <div class="table-wrap">
+                  <table>
+                    <thead><tr><th>Field</th><th>Required</th><th>Meaning</th></tr></thead>
+                    <tbody>
+                      <tr><td><code>type</code></td><td>Yes</td><td>Business event name, such as <code>payment</code> or <code>login.failed</code>.</td></tr>
+                      <tr><td><code>source</code></td><td>Yes</td><td>Producer or domain name, such as <code>billing</code> or <code>identity</code>.</td></tr>
+                      <tr><td><code>timestamp</code></td><td>No</td><td>Event time as an ISO-8601 timestamp. If omitted, Tengen uses the current time.</td></tr>
+                      <tr><td><code>data</code></td><td>Yes</td><td>JSON object containing business fields used by conditions, aggregates, grouping, and sequence correlation.</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div>
+                <h3>Example event</h3>
+                <div class="code-wrap"><pre><code>{
+  "type": "payment",
+  "source": "billing",
+  "timestamp": "2026-08-04T14:30:00Z",
+  "data": {
+    "amount": 2500,
+    "currency": "PHP",
+    "country": "PH",
+    "userId": "user-123"
+  }
+}</code></pre></div>
+              </div>
+            </div>
+
+            <h3>What happens to an accepted event?</h3>
+            <div class="flow-grid">
+              <div class="flow-step"><span>1</span><strong>Authorize</strong><p>HTTP requests use an API key. RabbitMQ uses the API key saved on the connector.</p></div>
+              <div class="flow-step"><span>2</span><strong>Classify time</strong><p>Tengen compares the event time with a durable watermark for its type and source.</p></div>
+              <div class="flow-step"><span>3</span><strong>Persist</strong><p>The event and its origin are saved before the processing result is returned.</p></div>
+              <div class="flow-step"><span>4</span><strong>Evaluate</strong><p>Active, valid rules evaluate the event, aggregate state, sequence progress, or absence state.</p></div>
+              <div class="flow-step"><span>5</span><strong>Queue actions</strong><p>Eligible webhooks are written to a durable outbox and delivered by a worker.</p></div>
+              <div class="flow-step"><span>6</span><strong>Trace</strong><p>Event Explorer records matches, queued actions, suppressions, and linked delivery records.</p></div>
+            </div>
+          </section>
+
+          <section class="doc-section" id="console-tour" data-title="console tour screenshots user interface">
+            <div class="section-heading">
+              <p class="eyebrow">03 / Find your way around</p>
+              <h2>Console tour</h2>
+              <p>The sidebar keeps the main operational areas in one place. Use the screenshots as a quick visual map.</p>
+            </div>
+            <div class="screenshot-grid">
+              <figure><img src="../assets/ChatGPT%20Image%20Aug%204%2C%202026%2C%2011_29_19%20PM.png" alt="Rules, Run Test, Event Explorer, and Settings screens"><figcaption>Rules, testing, Event Explorer, and settings.</figcaption></figure>
+              <figure><img src="../assets/ChatGPT%20Image%20Aug%204%2C%202026%2C%2011_34_41%20PM.png" alt="Rule creation, test result, event detail, and delivery detail screens"><figcaption>Rule creation, test results, event details, and delivery details.</figcaption></figure>
+              <figure><img src="../assets/ChatGPT%20Image%20Aug%204%2C%202026%2C%2011_27_23%20PM.png" alt="Deliveries, replay, RabbitMQ connector, and API key screens"><figcaption>Deliveries, replay, RabbitMQ connector, and API keys.</figcaption></figure>
+              <figure><img src="../assets/ChatGPT%20Image%20Aug%204%2C%202026%2C%2011_37_27%20PM.png" alt="Replay detail, RabbitMQ configuration, history, and login screens"><figcaption>Replay detail, RabbitMQ configuration, history, and login.</figcaption></figure>
+            </div>
+            <div class="feature-map">
+              <a href="#rule-builder"><strong>Rules</strong><span>Create, edit, activate, archive, test, and inspect revision history.</span></a>
+              <a href="#event-explorer"><strong>Events</strong><span>Filter accepted events and follow their processing trace.</span></a>
+              <a href="#webhooks"><strong>Deliveries</strong><span>Inspect webhook attempts and retry dead-lettered work.</span></a>
+              <a href="#replays"><strong>Replays</strong><span>Run analysis-only historical jobs.</span></a>
+              <a href="#rabbitmq-ingestion"><strong>Connectors</strong><span>Configure the single backend-managed RabbitMQ consumer.</span></a>
+              <a href="#api-keys"><strong>API Keys</strong><span>Create producer credentials and scope their event access.</span></a>
+              <a href="#settings-security"><strong>Settings</strong><span>Customize theme, accent, and time display.</span></a>
+            </div>
+          </section>
+
+          <section class="doc-section" id="http-ingestion" data-title="http event ingestion post api events api key curl">
+            <div class="section-heading">
+              <p class="eyebrow">04 / Ingest events</p>
+              <h2>HTTP event ingestion</h2>
+              <p>Use <code>POST /api/events</code> when an application or service can make an HTTP request for each event.</p>
+            </div>
+
+            <div class="content-grid two-up align-start">
+              <div>
+                <h3>Before sending an event</h3>
+                <ol class="step-list compact">
+                  <li>Open <strong>API Keys</strong> and choose <strong>New API Key</strong>.</li>
+                  <li>Give the key a recognizable name.</li>
+                  <li>Optionally enter comma-separated allowed event types and sources. Leave a field blank to allow all values for that dimension.</li>
+                  <li>Choose <strong>Compact summary</strong> for normal producers or <strong>Full details</strong> when the producer needs aggregate and sequence results.</li>
+                  <li>Copy the raw <code>tg_...</code> key immediately. It is shown only once; Tengen stores only its hash.</li>
+                </ol>
+              </div>
+              <div>
+                <h3>Send a payment event</h3>
+                <div class="code-wrap"><pre><code>curl -X POST http://localhost:8080/api/events \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: tg_your_raw_key" \
+  -H "Idempotency-Key: payment-123" \
+  -d '{
+    "type": "payment",
+    "source": "billing",
+    "timestamp": "2026-08-04T14:30:00Z",
+    "data": {
+      "amount": 2500,
+      "country": "PH"
+    }
+  }'</code></pre></div>
+              </div>
+            </div>
+
+            <h3>Producer response</h3>
+            <p>Every accepted request returns HTTP <code>200</code>. The response mode belongs to the API key, so processing is always complete even when the producer receives a compact projection.</p>
+            <div class="content-grid two-up align-start">
+              <div>
+                <h4>Compact response</h4>
+                <div class="code-wrap"><pre><code>{
+  "status": "accepted",
+  "matched": true,
+  "rules": ["large-payment"],
+  "queuedRules": [],
+  "suppressedRules": [],
+  "eventTimeStatus": "ON_TIME"
+}</code></pre></div>
+              </div>
+              <div>
+                <h4>Full response</h4>
+                <div class="code-wrap"><pre><code>{
+  "event": { "type": "payment", "source": "billing", "data": { "amount": 2500 } },
+  "status": "accepted",
+  "matched": true,
+  "rules": ["large-payment"],
+  "queuedRules": ["large-payment"],
+  "aggregates": {},
+  "sequences": {},
+  "suppressedRules": [],
+  "eventTimeStatus": "ON_TIME"
+}</code></pre></div>
+              </div>
+            </div>
+
+            <h3>Safe retries with Idempotency-Key</h3>
+            <p>Use one idempotency key for each logical event. The key is scoped to the API key that sent it.</p>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Situation</th><th>Result</th></tr></thead>
+                <tbody>
+                  <tr><td>Same key and equivalent payload</td><td>The original completed response is returned. The event is not processed twice.</td></tr>
+                  <tr><td>Same key with a different payload</td><td><code>409 Conflict</code>; the key cannot be reused for another event.</td></tr>
+                  <tr><td>Same key while the first request is processing</td><td><code>409 Conflict</code>; retry after the first request completes.</td></tr>
+                  <tr><td>New request</td><td><code>X-Idempotency-Replayed: false</code>.</td></tr>
+                  <tr><td>Completed replay</td><td><code>X-Idempotency-Replayed: true</code>.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="notice notice-info"><span class="notice-icon">i</span><div>API-key scope is checked after authentication. A missing or invalid key returns <code>401</code>; an authenticated key used outside its allowed event type or source scope returns <code>403</code>.</div></div>
+
+            <h3>HTTP ingestion guardrails</h3>
+            <ul class="bullet-list">
+              <li>Request bodies are limited by <code>INGESTION_MAX_BODY_BYTES</code> (1 MiB by default).</li>
+              <li>Each API key is rate-limited by <code>INGESTION_RATE_LIMIT_PER_MINUTE</code> (600 by default). A limited request returns <code>429</code> and a <code>Retry-After</code> header.</li>
+              <li>Event timestamps too far into the future are rejected. The default maximum future skew is five minutes.</li>
+              <li><code>type</code> and <code>source</code> are required; <code>data</code> must be a JSON object.</li>
+            </ul>
+          </section>
+
+          <section class="doc-section" id="rabbitmq-ingestion" data-title="rabbitmq ingestion connector setup queue dead letter amqp">
+            <div class="section-heading">
+              <p class="eyebrow">05 / Ingest events</p>
+              <h2>RabbitMQ ingestion</h2>
+              <p>Use the RabbitMQ connector when producers already publish to a broker or when ingestion should be asynchronous and decoupled from the producer request.</p>
+            </div>
+
+            <div class="notice notice-warning"><span class="notice-icon">!</span><div>Tengen manages one backend consumer for one existing input queue. The browser never connects to RabbitMQ. The queue and dead-letter exchange must exist before you test the connector.</div></div>
+
+            <h3>Local broker and topology</h3>
+            <div class="content-grid two-up align-start">
+              <div>
+                <div class="code-wrap"><pre><code>docker compose -f tengen/docker-compose.yml --profile rabbitmq up -d db rabbitmq</code></pre></div>
+                <p>For the local Compose broker, the AMQP port is <code>5672</code>, the management UI is <code>15672</code>, and the default credentials are <code>tengen</code> / <code>tengen</code>.</p>
+              </div>
+              <div class="diagram-box"><pre><code>tengen.input       --events------&gt; tengen.events
+tengen.dead-letter --dead-letter-&gt; tengen.events.dlq</code></pre><small>Use direct exchanges and durable queues. The names are examples; the connector accepts your configured names.</small></div>
+            </div>
+
+            <h3>Configure the connector</h3>
+            <ol class="step-list">
+              <li>Open <strong>API Keys</strong> and create an active key whose allowed event types and sources cover broker messages.</li>
+              <li>Open <strong>Connectors</strong> and choose <strong>RabbitMQ</strong>.</li>
+              <li>Enter the broker connection, queue, dead-letter, API-key, and retry settings described below.</li>
+              <li>Choose <strong>Save draft</strong>. Tengen increments the configuration version and clears the previous test result.</li>
+              <li>Choose <strong>Test connection</strong>. The test checks credentials, virtual-host access, the input queue, and the dead-letter exchange.</li>
+              <li>Choose <strong>Enable consumption</strong>. Enabling is blocked until the current saved version has a successful test.</li>
+            </ol>
+
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Connector field</th><th>What to enter</th></tr></thead>
+                <tbody>
+                  <tr><td>Display name</td><td>A label for the connector.</td></tr>
+                  <tr><td>Host / Port</td><td>Broker address and AMQP port. Use <code>localhost</code> when the backend runs on the host; use the Compose service name when the backend runs in Docker.</td></tr>
+                  <tr><td>Virtual host</td><td>Usually <code>/</code> for the local broker.</td></tr>
+                  <tr><td>TLS enabled</td><td>Enable when the broker requires TLS.</td></tr>
+                  <tr><td>Username / Password</td><td>Broker credentials. The password is write-only in the UI and encrypted before storage.</td></tr>
+                  <tr><td>Existing input queue</td><td>The durable queue Tengen consumes.</td></tr>
+                  <tr><td>Dead-letter exchange / routing key</td><td>The route used for malformed, permanently invalid, or exhausted messages.</td></tr>
+                  <tr><td>Ingestion API key</td><td>An active Tengen API key. Its event type/source policy applies to RabbitMQ messages.</td></tr>
+                  <tr><td>Maximum body bytes</td><td>Per-message body limit, from 1 byte to 10 MiB.</td></tr>
+                  <tr><td>Retry attempts</td><td>1 to 20 attempts for transient processing failures.</td></tr>
+                  <tr><td>Retry initial delay / multiplier / maximum delay</td><td>Backoff controls for transient processing failures.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3>Message contract</h3>
+            <p>Publish persistent UTF-8 JSON with <code>content_type=application/json</code> and a unique AMQP <code>message_id</code>. The body uses the same event envelope as HTTP ingestion.</p>
+            <div class="code-wrap"><pre><code>{
+  "type": "payment",
+  "source": "billing",
+  "timestamp": "2026-08-04T14:30:00Z",
+  "data": { "amount": 2500, "country": "PH" }
+}</code></pre></div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Message condition</th><th>Connector behavior</th></tr></thead>
+                <tbody>
+                  <tr><td>Valid message and new message ID</td><td>Persist, evaluate, record the RabbitMQ origin, then acknowledge.</td></tr>
+                  <tr><td>Repeated message ID</td><td>Use the durable receipt to deduplicate and acknowledge without creating another event.</td></tr>
+                  <tr><td>Missing ID, invalid JSON, wrong content type, body too large, or scope rejection</td><td>Classify as permanent, publish to the configured dead-letter route after confirmation, then acknowledge the original.</td></tr>
+                  <tr><td>Transient processing failure</td><td>Retry with the configured backoff. After retries are exhausted, publish to dead letter and acknowledge.</td></tr>
+                  <tr><td>Dead-letter publish cannot be confirmed</td><td>Pause the connector so a message is not acknowledged without a confirmed dead-letter copy.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3>RabbitMQ watermark header</h3>
+            <p>Watermark processing is enabled by default. To explicitly opt out for one message, set the AMQP header below:</p>
+            <div class="code-wrap"><pre><code>x-tengen-watermark: false</code></pre></div>
+            <ul class="bullet-list">
+              <li>Missing, malformed, or non-<code>false</code> values keep watermark processing enabled.</li>
+              <li>An opted-out message is still API-key validated, persisted, and evaluated.</li>
+              <li>An opted-out message does not create or update a watermark and has no event-time lateness classification.</li>
+              <li>This header is a processing hint, not a security control.</li>
+            </ul>
+          </section>
+
+          <section class="doc-section" id="event-time" data-title="event time watermarks late accepted too late allowed lateness">
+            <div class="section-heading">
+              <p class="eyebrow">06 / Stream behavior</p>
+              <h2>Event time and lateness</h2>
+              <p>Tengen keeps a durable watermark per event type and source so out-of-order events can be accepted without moving rule state backwards.</p>
+            </div>
+
+            <div class="content-grid two-up align-start">
+              <div>
+                <h3>How classification works</h3>
+                <p>The watermark is based on the highest observed event time minus the allowed lateness period. The default grace period is 300 seconds, controlled by <code>INGESTION_ALLOWED_LATENESS_SECONDS</code>.</p>
+                <ul class="bullet-list">
+                  <li><strong>ON_TIME:</strong> the event is at or beyond the current stream progress.</li>
+                  <li><strong>LATE_ACCEPTED:</strong> the event is older than the current maximum but still newer than the watermark.</li>
+                  <li><strong>TOO_LATE:</strong> the event is at or before the watermark.</li>
+                </ul>
+              </div>
+              <div class="status-cards">
+                <div class="status-card status-green"><strong>ON_TIME</strong><span>Persisted and evaluated normally.</span></div>
+                <div class="status-card status-amber"><strong>LATE_ACCEPTED</strong><span>Persisted and evaluated; watermark stays monotonic.</span></div>
+                <div class="status-card status-red"><strong>TOO_LATE</strong><span>Persisted and accepted, but no rule matches, state changes, or webhook actions.</span></div>
+              </div>
+            </div>
+
+            <div class="notice notice-info"><span class="notice-icon">i</span><div>Absence deadlines close against the expected event stream watermark. When a stream is idle, the absence worker can advance that route using wall-clock progress so pending expectations do not wait forever for another event.</div></div>
+          </section>
+
+          <section class="doc-section" id="rule-builder" data-title="create rule rule builder common fields visual builder raw aviator">
+            <div class="section-heading">
+              <p class="eyebrow">07 / Build rules</p>
+              <h2>Rule builder</h2>
+              <p>Rules are named, versioned configurations that turn event patterns into log records or webhook actions.</p>
+            </div>
+
+            <h3>Common creation workflow</h3>
+            <ol class="step-list">
+              <li>Open <strong>Rules</strong> and choose <strong>New Rule</strong>.</li>
+              <li>Enter a unique rule name. Rule names are limited to 100 characters.</li>
+              <li>Choose one of <strong>CONDITION</strong>, <strong>AGGREGATE</strong>, <strong>SEQUENCE</strong>, or <strong>ABSENCE</strong>.</li>
+              <li>Choose an action: <strong>LOG</strong> records the match only; <strong>WEBHOOK</strong> also creates a delivery intent.</li>
+              <li>Fill in the type/source, conditions, windows, grouping, threshold, and webhook options required by the selected rule type.</li>
+              <li>Leave <strong>Active</strong> selected when the rule should start evaluating immediately, or save it inactive for review.</li>
+              <li>Choose <strong>Save Rule</strong>. Tengen validates the complete rule before it can execute.</li>
+            </ol>
+
+            <h3>Shared rule fields</h3>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Field</th><th>Used by</th><th>Guidance</th></tr></thead>
+                <tbody>
+                  <tr><td>Name</td><td>All</td><td>Unique human-readable identifier.</td></tr>
+                  <tr><td>Action</td><td>All</td><td><code>LOG</code> or <code>WEBHOOK</code>.</td></tr>
+                  <tr><td>Event type / source</td><td>Condition, aggregate, absence start</td><td>Exact string pre-filter before the Aviator condition runs.</td></tr>
+                  <tr><td>Condition</td><td>Condition, aggregate, absence start</td><td>Visual Builder or raw Aviator expression.</td></tr>
+                  <tr><td>Threshold</td><td>Aggregate</td><td>The rule matches when the calculated value is greater than or equal to this number.</td></tr>
+                  <tr><td>Window (seconds)</td><td>Aggregate, sequence, absence</td><td>Event-time window. It must be positive for these rule types.</td></tr>
+                  <tr><td>Group by field</td><td>Aggregate, sequence, absence</td><td>Optional dotted path such as <code>data.userId</code>. Blank means global state.</td></tr>
+                  <tr><td>Active</td><td>All</td><td>Only active, non-archived, valid rules participate in live evaluation.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3>Conditions: Visual Builder or Raw Aviator</h3>
+            <p>The visual builder creates an Aviator expression. Use groups to combine conditions with <strong>AND</strong> or <strong>OR</strong>. Each leaf has a field, operator, and value.</p>
+            <div class="content-grid two-up align-start">
+              <div>
+                <h4>Supported operators in the builder</h4>
+                <div class="operator-grid">
+                  <span><code>==</code><small>equals</small></span>
+                  <span><code>!=</code><small>not equal</small></span>
+                  <span><code>&gt;</code><small>greater than</small></span>
+                  <span><code>&gt;=</code><small>greater or equal</small></span>
+                  <span><code>&lt;</code><small>less than</small></span>
+                  <span><code>&lt;=</code><small>less or equal</small></span>
+                  <span><code>contains</code><small>string contains</small></span>
+                  <span><code>not contains</code><small>string does not contain</small></span>
+                </div>
+              </div>
+              <div>
+                <h4>Useful field paths</h4>
+                <div class="tag-list"><code>type</code><code>source</code><code>timestamp</code><code>data.amount</code><code>data.country</code><code>data.currency</code><code>data.status</code><code>data.userId</code></div>
+                <p class="muted">The event environment also exposes the complete <code>data</code> object, so raw Aviator can reference other fields.</p>
+              </div>
+            </div>
+            <div class="code-wrap"><pre><code>data.amount &gt;= 1000 &amp;&amp; data.country == 'PH'</code></pre></div>
+            <p>Raw expressions are validated by Aviator before the rule is saved or activated. The default maximum expression length is 10,000 characters.</p>
+          </section>
+
+          <section class="doc-section" id="condition-rules" data-title="condition rule single event alert validation">
+            <div class="section-heading">
+              <p class="eyebrow">08 / Rule type</p>
+              <h2>Condition rules</h2>
+              <p>A condition rule matches one event after its exact type/source pre-filter and Aviator expression both pass.</p>
+            </div>
+            <div class="rule-recipe">
+              <div class="recipe-number">A</div>
+              <div><strong>Use it for:</strong> high-value payments, suspicious countries, failed status values, or any single-event alert.</div>
+              <div><strong>Configure:</strong> event type, source, condition, action, and optional webhook settings.</div>
+            </div>
+            <h3>Example: high-value payment</h3>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Field</th><th>Value</th></tr></thead>
+                <tbody>
+                  <tr><td>Name</td><td><code>large-payment</code></td></tr>
+                  <tr><td>Rule type</td><td><code>CONDITION</code></td></tr>
+                  <tr><td>Event type</td><td><code>payment</code></td></tr>
+                  <tr><td>Source</td><td><code>billing</code></td></tr>
+                  <tr><td>Condition</td><td><code>data.amount &gt;= 1000 &amp;&amp; data.currency == 'PHP'</code></td></tr>
+                  <tr><td>Action</td><td><code>WEBHOOK</code> or <code>LOG</code></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="doc-section" id="aggregate-rules" data-title="aggregate rule count sum avg min max threshold window group by">
+            <div class="section-heading">
+              <p class="eyebrow">09 / Rule type</p>
+              <h2>Aggregate rules</h2>
+              <p>An aggregate rule calculates a value over a moving event-time window and matches when that value reaches its threshold.</p>
+            </div>
+
+            <div class="metric-strip">
+              <div><strong>COUNT</strong><span>number of matching events</span></div>
+              <div><strong>SUM</strong><span>total numeric field value</span></div>
+              <div><strong>AVG</strong><span>average numeric field value</span></div>
+              <div><strong>MIN</strong><span>minimum numeric field value</span></div>
+              <div><strong>MAX</strong><span>maximum numeric field value</span></div>
+            </div>
+
+            <h3>How to create one</h3>
+            <ol class="step-list">
+              <li>Choose <code>AGGREGATE</code> as the rule type.</li>
+              <li>Set the event type, source, and optional condition that selects events for the aggregate.</li>
+              <li>Choose an aggregate function. <code>COUNT</code> does not need an aggregate field; the other functions require a numeric dotted path such as <code>data.amount</code>.</li>
+              <li>Set the window in seconds and the threshold. The current event is included in the calculation.</li>
+              <li>Optionally set <strong>Group by field</strong> to maintain separate totals per user, account, device, or order.</li>
+              <li>Choose <code>ONCE_PER_WINDOW</code> when a webhook should be reserved once per fixed event-time bucket rather than once for every matching event.</li>
+            </ol>
+
+            <div class="content-grid two-up align-start">
+              <div>
+                <h3>Example: five failed logins</h3>
+                <div class="code-wrap"><pre><code>Rule type:     AGGREGATE
+Event type:    login.failed
+Source:        identity
+Aggregate:     COUNT
+Window:        300 seconds
+Threshold:     5
+Group by:      data.userId</code></pre></div>
+              </div>
+              <div>
+                <h3>Window semantics</h3>
+                <p>The lower time boundary is excluded and the current event is included. A sum, average, minimum, or maximum ignores events whose aggregate field is not numeric. A grouped aggregate with no usable group key does not produce a grouped match.</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="doc-section" id="sequence-rules" data-title="sequence rule ordered events two five steps correlation window">
+            <div class="section-heading">
+              <p class="eyebrow">10 / Rule type</p>
+              <h2>Sequence rules</h2>
+              <p>A sequence rule detects two to five ordered event steps completed within one event-time window.</p>
+            </div>
+
+            <h3>Configure the sequence</h3>
+            <ol class="step-list">
+              <li>Choose <code>SEQUENCE</code> as the rule type.</li>
+              <li>Keep the default two steps or add steps up to a maximum of five. Use the arrows to reorder them.</li>
+              <li>For every step, enter an event type, source, and condition.</li>
+              <li>Set the sequence window in seconds.</li>
+              <li>Optionally set one shared group-by path, such as <code>data.orderId</code> or <code>data.userId</code>. Every step must resolve to the same value for correlation.</li>
+              <li>Use <code>LOG</code> or <code>WEBHOOK</code>. Sequence webhooks use <code>EVERY_MATCH</code>; the edge and once-per-window trigger modes are not available for sequence rules.</li>
+            </ol>
+
+            <div class="content-grid two-up align-start">
+              <div>
+                <h3>Example: order workflow</h3>
+                <div class="timeline-list">
+                  <div><span>1</span><strong>order.created</strong><small>source: checkout, condition: <code>data.orderId != nil</code></small></div>
+                  <div><span>2</span><strong>payment.completed</strong><small>source: billing, condition: <code>data.status == 'paid'</code></small></div>
+                  <div><span>3</span><strong>shipment.created</strong><small>source: fulfillment, condition: <code>data.orderId != nil</code></small></div>
+                </div>
+              </div>
+              <div>
+                <h3>Important behavior</h3>
+                <ul class="bullet-list">
+                  <li>Steps are evaluated in order.</li>
+                  <li>A single event advances at most one sequence instance.</li>
+                  <li>Progress is durable and isolated by rule revision and optional group key.</li>
+                  <li>An event that matches a later step cannot skip the expected next step.</li>
+                  <li>When the final step completes, the response contains the matched step IDs and times.</li>
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          <section class="doc-section" id="absence-rules" data-title="absence rule missing expected event deadline window group">
+            <div class="section-heading">
+              <p class="eyebrow">11 / Rule type</p>
+              <h2>Absence rules</h2>
+              <p>An absence rule opens an expectation when a starting event matches, then triggers only if the expected event does not arrive before the event-time deadline.</p>
+            </div>
+
+            <div class="content-grid two-up align-start">
+              <div>
+                <h3>Configure the start</h3>
+                <ul class="bullet-list">
+                  <li>Set the starting event type and source.</li>
+                  <li>Build the starting condition.</li>
+                  <li>Set a positive absence window in seconds.</li>
+                  <li>Optionally group by a key such as <code>data.orderId</code>.</li>
+                </ul>
+              </div>
+              <div>
+                <h3>Configure the expected event</h3>
+                <ul class="bullet-list">
+                  <li>Set the expected event type and source.</li>
+                  <li>Build the expected-event condition.</li>
+                  <li>When an expected event arrives in order, within the window, and with the same group key, the pending instance is satisfied.</li>
+                  <li>When the deadline closes without satisfaction, the instance triggers and may create a webhook.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="absence-lifecycle">
+              <span>start matched</span><i>-&gt;</i><span>expectation pending</span><i>-&gt;</i><span class="pill-green">satisfied</span><span class="or">or</span><span class="pill-red">triggered</span>
+            </div>
+            <div class="notice notice-info"><span class="notice-icon">i</span><div>Absence rules are finalized by the background absence worker. Their webhook trigger mode is always <code>EVERY_MATCH</code>; use cooldown to reduce repeated delivery when necessary.</div></div>
+          </section>
+
+          <section class="doc-section" id="testing-rules" data-title="run test rule simulation sequence absence no side effects">
+            <div class="section-heading">
+              <p class="eyebrow">12 / Validate safely</p>
+              <h2>Testing rules</h2>
+              <p>The <strong>Run Test</strong> page simulates rule evaluation without creating live processing side effects.</p>
+            </div>
+            <div class="content-grid two-up align-start">
+              <div>
+                <h3>Single rule</h3>
+                <ul class="bullet-list">
+                  <li>Select one saved rule and provide an event JSON document.</li>
+                  <li>For a sequence, provide one event JSON document per configured step in order.</li>
+                  <li>For an absence rule, provide the starting event and optionally an expected event. Leave the expected event blank to simulate a trigger.</li>
+                  <li>Aggregate tests may read persisted events in the window, but the sample event is not saved.</li>
+                </ul>
+              </div>
+              <div>
+                <h3>All active rules</h3>
+                <ul class="bullet-list">
+                  <li>Choose the all-rules mode to evaluate a sample against every active, non-archived rule.</li>
+                  <li>Review per-rule condition, aggregate, sequence, and match outcomes.</li>
+                  <li>Testing does not change trigger state, watermarks, absence state, or sequence progress.</li>
+                  <li>Testing never sends a webhook, including for rules whose action is configured as <code>LOG</code> or <code>WEBHOOK</code>.</li>
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          <section class="doc-section" id="rule-lifecycle" data-title="rule lifecycle revisions history archive restore activate deactivate">
+            <div class="section-heading">
+              <p class="eyebrow">13 / Manage change</p>
+              <h2>Rule lifecycle and history</h2>
+              <p>Rule changes are auditable and revisioned. The current rule is a projection; the revision history is immutable.</p>
+            </div>
+            <div class="lifecycle-grid">
+              <div><span class="lifecycle-icon">+</span><strong>Create</strong><p>Creates revision 1 after validation.</p></div>
+              <div><span class="lifecycle-icon">&#9998;</span><strong>Update</strong><p>Creates a new revision and resets runtime state for the changed configuration.</p></div>
+              <div><span class="lifecycle-icon">&#9654;</span><strong>Activate</strong><p>Only valid, non-archived rules can be activated.</p></div>
+              <div><span class="lifecycle-icon">||</span><strong>Deactivate</strong><p>Stops live evaluation without deleting the rule or its history.</p></div>
+              <div><span class="lifecycle-icon">&#9632;</span><strong>Archive</strong><p>The delete route archives the rule and deactivates it.</p></div>
+              <div><span class="lifecycle-icon">&#8634;</span><strong>Restore</strong><p>Copies an older snapshot into a new revision and starts it inactive.</p></div>
+            </div>
+            <h3>Runtime state reset</h3>
+            <p>Updating, activating, deactivating, archiving, unarchiving, or restoring a rule clears action cooldown/window state and cancels active sequence or pending absence instances for that rule. This prevents a new configuration from inheriting progress from an older revision.</p>
+            <div class="notice notice-warning"><span class="notice-icon">!</span><div>When using the API, the rule response includes an ETag containing the current revision. Send <code>If-Match</code> when you want a mutation to fail instead of overwriting a newer change.</div></div>
+          </section>
+
+          <section class="doc-section" id="webhooks" data-title="webhook configuration callback url delivery retry signature cooldown trigger modes">
+            <div class="section-heading">
+              <p class="eyebrow">14 / Trigger actions</p>
+              <h2>Webhook actions</h2>
+              <p>Webhook actions are asynchronous. Tengen commits the event and the delivery intent before the worker makes the outbound request.</p>
+            </div>
+
+            <h3>Configure a webhook rule</h3>
+            <ol class="step-list">
+              <li>Choose <code>WEBHOOK</code> in the rule action field.</li>
+              <li>Enter a callback URL. It must be HTTPS and use a public host/address.</li>
+              <li>Choose the trigger mode appropriate for the rule.</li>
+              <li>Optionally set a cooldown in seconds. Cooldown controls repeated delivery, not whether the rule matches.</li>
+              <li>Save and activate the rule. The delivery worker will process the outbox automatically when enabled.</li>
+            </ol>
+
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Trigger mode</th><th>Available for</th><th>Behavior</th></tr></thead>
+                <tbody>
+                  <tr><td><code>EVERY_MATCH</code></td><td>All rule types</td><td>Queues one logical webhook for every eligible match.</td></tr>
+                  <tr><td><code>EDGE</code></td><td>Condition and aggregate rules</td><td>Queues only when the rule changes from not matching to matching. A later non-match resets the edge.</td></tr>
+                  <tr><td><code>ONCE_PER_WINDOW</code></td><td>Aggregate rules only</td><td>Reserves at most one webhook per fixed event-time window and group. A failed delivery can retry.</td></tr>
+                  <tr><td>Cooldown</td><td>Webhook rules</td><td>Suppresses repeated delivery for a configured period per group or globally. It does not change match evaluation.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3>Callback URL restrictions</h3>
+            <p>Tengen validates the URL when the rule is saved and again before delivery. The destination must:</p>
+            <ul class="bullet-list">
+              <li>Use <code>https://</code>.</li>
+              <li>Contain a host and no embedded username/password.</li>
+              <li>Contain no URL fragment.</li>
+              <li>Resolve to public addresses. Localhost, loopback, private, link-local, multicast, metadata-service, documentation, and other reserved ranges are rejected.</li>
+              <li>Be reachable without relying on redirects; the client does not follow redirects.</li>
+            </ul>
+            <p>For local development, use a public HTTPS tunnel or disable the worker. <code>http://localhost</code> callbacks are intentionally rejected.</p>
+
+            <h3>Delivery payload</h3>
+            <p>Each delivery is a JSON document containing the original event and the rule evaluation details available for that match.</p>
+            <div class="code-wrap"><pre><code>{
+  "event": {
+    "type": "payment",
+    "source": "billing",
+    "timestamp": "2026-08-04T14:30:00Z",
+    "data": { "amount": 2500, "country": "PH" }
+  },
+  "status": "accepted",
+  "matched": true,
+  "rules": ["large-payment"],
+  "aggregates": {},
+  "sequences": {}
+}</code></pre></div>
+            <p>Aggregate matches add an entry under <code>aggregates</code>. Completed sequences add an entry under <code>sequences</code>. Absence triggers add an entry under <code>absences</code> with the start event, expected event, deadline, group, and triggering watermark.</p>
+
+            <h3>Signed delivery headers</h3>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Header</th><th>Meaning</th></tr></thead>
+                <tbody>
+                  <tr><td><code>X-Tengen-Delivery-Id</code></td><td>Stable outbox delivery ID. Use it for receiver-side deduplication.</td></tr>
+                  <tr><td><code>X-Tengen-Timestamp</code></td><td>Unix epoch seconds used for signing.</td></tr>
+                  <tr><td><code>X-Tengen-Signature</code></td><td><code>v1=</code> followed by the hexadecimal HMAC-SHA256 signature.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p>The signature is computed over <code>&lt;timestamp&gt;.&lt;raw-json-body&gt;</code> with <code>WEBHOOK_SIGNING_SECRET</code> as the HMAC key. Verify against the raw request body before parsing or reserializing JSON.</p>
+            <div class="code-wrap"><pre><code>message = X-Tengen-Timestamp + "." + raw_request_body
+signature = HMAC_SHA256_HEX(WEBHOOK_SIGNING_SECRET, message)
+expected = "v1=" + signature</code></pre></div>
+
+            <h3>Delivery lifecycle</h3>
+            <div class="delivery-flow"><span> PENDING </span><i>-&gt;</i><span> PROCESSING </span><i>-&gt;</i><span class="pill-green"> DELIVERED </span><span class="or">or</span><span> RETRY_SCHEDULED </span><i>-&gt;</i><span class="pill-red"> DEAD_LETTER </span></div>
+            <ul class="bullet-list">
+              <li>2xx responses are successful.</li>
+              <li>Timeouts, connection failures, <code>408</code>, <code>429</code>, and <code>5xx</code> responses are retryable.</li>
+              <li>Permanent failures and exhausted attempts become <code>DEAD_LETTER</code>.</li>
+              <li>The default worker allows eight attempts with exponential backoff capped at 15 minutes.</li>
+              <li>Delivery is at least once. A receiver should deduplicate by <code>X-Tengen-Delivery-Id</code>.</li>
+            </ul>
+
+            <h3>Delivery history</h3>
+            <p>Open <strong>Deliveries</strong> to filter by status, rule, event, time range, or search text. Open a row to inspect the destination, payload metadata, attempts, status code, error, and timeline. Retry a dead-lettered delivery from its detail view; the same outbox record is reused.</p>
+          </section>
+
+          <section class="doc-section" id="api-keys" data-title="api keys create scope revoke response mode producer credentials">
+            <div class="section-heading">
+              <p class="eyebrow">15 / Access control</p>
+              <h2>API keys</h2>
+              <p>API keys authenticate producers and can limit which event types and sources they may send.</p>
+            </div>
+            <div class="content-grid two-up align-start">
+              <div>
+                <h3>Create a key</h3>
+                <ol class="step-list compact">
+                  <li>Open <strong>API Keys</strong> and choose <strong>New API Key</strong>.</li>
+                  <li>Enter a descriptive name.</li>
+                  <li>Enter allowed event types and sources as comma-separated lists, or leave them blank for all.</li>
+                  <li>Choose compact or full producer responses.</li>
+                  <li>Copy the raw key from the one-time success message.</li>
+                </ol>
+              </div>
+              <div>
+                <h3>Manage a key</h3>
+                <ul class="bullet-list">
+                  <li>The table shows the key ID, name, visible prefix, response mode, scope, status, and expiration.</li>
+                  <li>Raw keys are never returned after creation. Tengen stores only a SHA-256 hash.</li>
+                  <li>Revoke a key to prevent future HTTP or RabbitMQ ingestion.</li>
+                  <li>A connector cannot be enabled with an inactive or expired key.</li>
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          <section class="doc-section" id="event-explorer" data-title="event explorer event history filters trace rabbitmq origin">
+            <div class="section-heading">
+              <p class="eyebrow">16 / Investigate</p>
+              <h2>Event Explorer</h2>
+              <p>Use <strong>Events</strong> to find accepted events and follow their processing trace from ingestion to webhook delivery.</p>
+            </div>
+            <h3>Available filters</h3>
+            <div class="tag-list large"><code>event ID</code><code>type</code><code>source</code><code>API key ID</code><code>matched</code><code>trace available</code><code>timing</code><code>origin</code><code>occurred from/to</code></div>
+            <div class="content-grid two-up align-start">
+              <div>
+                <h3>List view</h3>
+                <p>The list shows event ID, type, source, ingestion origin, match outcome, timing classification, API key, occurred time, and received time. Use local or UTC display from Settings.</p>
+              </div>
+              <div>
+                <h3>Detail view</h3>
+                <p>Open an event to inspect the original payload, event-time handling, matched-rule outcomes, aggregate or sequence details, absence instances, RabbitMQ connector metadata, and linked webhook deliveries.</p>
+              </div>
+            </div>
+            <div class="notice notice-info"><span class="notice-icon">i</span><div>New events have a durable processing trace. Older records created before event tracing may show an explicit legacy or trace-unavailable state.</div></div>
+          </section>
+
+          <section class="doc-section" id="replays" data-title="replay backfill historical analysis pause resume cancel retry">
+            <div class="section-heading">
+              <p class="eyebrow">17 / Analyze history</p>
+              <h2>Replay and backfill</h2>
+              <p>Replay jobs evaluate historical events against an immutable rule revision for analysis. They are deliberately isolated from live processing.</p>
+            </div>
+            <div class="notice notice-warning"><span class="notice-icon">!</span><div>Replay jobs never send webhooks and never change live rule state, watermarks, event traces, or delivery records. They are safe for comparison and investigation.</div></div>
+
+            <h3>Create a replay</h3>
+            <ol class="step-list">
+              <li>Open <strong>Replays</strong>.</li>
+              <li>Select a rule and an immutable revision.</li>
+              <li>Select an occurred-time range. The start is inclusive and the end is exclusive.</li>
+              <li>Optionally filter the input events by API key.</li>
+              <li>Choose <strong>Start replay job</strong>. The request is immutable after creation.</li>
+            </ol>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Replay capability</th><th>Behavior</th></tr></thead>
+                <tbody>
+                  <tr><td>Supported rule types</td><td>Condition and aggregate revisions. Sequence and absence revisions are not supported by the current replay MVP.</td></tr>
+                  <tr><td>Range</td><td>Up to <code>TENGEN_REPLAY_MAX_RANGE_DAYS</code> days, 31 by default.</td></tr>
+                  <tr><td>Materialized output</td><td>Capped by <code>TENGEN_REPLAY_MAX_MATERIALIZED_OUTPUT_EVENTS</code>, 10,000 by default.</td></tr>
+                  <tr><td>Aggregate warmup</td><td>The worker reads the required preceding window so aggregate values at the requested start are meaningful.</td></tr>
+                  <tr><td>Status</td><td><code>QUEUED</code>, <code>RUNNING</code>, <code>PAUSE_REQUESTED</code>, <code>PAUSED</code>, <code>CANCEL_REQUESTED</code>, <code>COMPLETED</code>, <code>FAILED</code>, or <code>CANCELLED</code>.</td></tr>
+                  <tr><td>Controls</td><td>Pause, resume, cancel, and retry failed retryable jobs. Retry resumes from the last committed checkpoint.</td></tr>
+                  <tr><td>Audit</td><td>View progress, outcomes, errors, and immutable transition history.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p>Replay control requests use the job version in <code>If-Match</code>. Refresh the job before controlling it when another operator may have changed its state.</p>
+          </section>
+
+          <section class="doc-section" id="settings-security" data-title="settings theme accent time display login jwt security">
+            <div class="section-heading">
+              <p class="eyebrow">18 / Operate safely</p>
+              <h2>Settings and security</h2>
+              <p>The application separates producer authentication from administrator sessions and keeps console preferences server-backed.</p>
+            </div>
+
+            <div class="content-grid two-up align-start">
+              <div>
+                <h3>Console settings</h3>
+                <ul class="bullet-list">
+                  <li><strong>Theme:</strong> light, dark, or system.</li>
+                  <li><strong>Accent:</strong> blue, indigo, purple, teal, green, orange, yellow, red, pink, grey, black, or neon.</li>
+                  <li><strong>Time display:</strong> local time or UTC.</li>
+                  <li><strong>Reset:</strong> light theme, blue accent, and local time.</li>
+                </ul>
+              </div>
+              <div>
+                <h3>Administrator sessions</h3>
+                <ul class="bullet-list">
+                  <li>Login exchanges the configured admin credentials for access and refresh JWTs.</li>
+                  <li>The Next.js console stores them in <code>httpOnly</code> cookies; browser JavaScript does not read the tokens.</li>
+                  <li>Access tokens expire after 15 minutes by default; refresh sessions last 7 days by default.</li>
+                  <li>Refresh sessions are rotated and revoked on replay or logout.</li>
+                  <li>Login attempts are throttled by IP and username.</li>
+                </ul>
+              </div>
+            </div>
+            <div class="notice notice-info"><span class="notice-icon">i</span><div>The frontend proxy attaches the access token as a Bearer token when forwarding admin requests to the backend and refreshes an expired access token once.</div></div>
+          </section>
+
+          <section class="doc-section" id="configuration" data-title="configuration environment variables webhook worker rabbitmq replay retention health metrics">
+            <div class="section-heading">
+              <p class="eyebrow">19 / Operate safely</p>
+              <h2>Configuration</h2>
+              <p>Use environment variables for deployment behavior. The defaults below match the included local Compose setup.</p>
+            </div>
+
+            <details class="config-group" open>
+              <summary>Core application and security</summary>
+              <div class="table-wrap"><table>
+                <thead><tr><th>Variable</th><th>Default</th><th>Purpose</th></tr></thead>
+                <tbody>
+                  <tr><td><code>SPRING_PROFILES_ACTIVE</code></td><td>empty</td><td>Use <code>prod</code> or <code>production</code> for production startup checks.</td></tr>
+                  <tr><td><code>DB_URL</code> / <code>DB_USER</code> / <code>DB_PASSWORD</code></td><td>localhost database / tengen / tengen</td><td>PostgreSQL connection.</td></tr>
+                  <tr><td><code>ADMIN_USER</code> / <code>ADMIN_PASSWORD</code></td><td>admin / admin</td><td>Initial administrator credentials.</td></tr>
+                  <tr><td><code>JWT_SECRET</code></td><td>development fallback</td><td>JWT signing secret. Use a random value of at least 32 bytes in production.</td></tr>
+                  <tr><td><code>JWT_ISSUER</code> / <code>JWT_AUDIENCE</code></td><td>tengen / tengen-admin</td><td>JWT validation claims.</td></tr>
+                  <tr><td><code>JWT_ACCESS_TTL_MINUTES</code> / <code>JWT_REFRESH_TTL_DAYS</code></td><td>15 / 7</td><td>Admin access and refresh lifetimes.</td></tr>
+                  <tr><td><code>CORS_ALLOWED_ORIGINS</code></td><td>http://localhost:3000</td><td>Allowed browser origins.</td></tr>
+                  <tr><td><code>LOGIN_MAX_ATTEMPTS</code> / <code>LOGIN_WINDOW_SECONDS</code></td><td>5 / 60</td><td>Login throttling.</td></tr>
+                  <tr><td><code>REFRESH_REPLAY_GRACE_SECONDS</code></td><td>2</td><td>Refresh-token replay handling grace period.</td></tr>
+                </tbody>
+              </table></div>
+            </details>
+
+            <details class="config-group">
+              <summary>Ingestion and rule safety</summary>
+              <div class="table-wrap"><table>
+                <thead><tr><th>Variable</th><th>Default</th><th>Purpose</th></tr></thead>
+                <tbody>
+                  <tr><td><code>RULE_MAX_EXPRESSION_LENGTH</code></td><td>10000</td><td>Maximum Aviator expression length.</td></tr>
+                  <tr><td><code>INGESTION_MAX_BODY_BYTES</code></td><td>1048576</td><td>Maximum HTTP event body size.</td></tr>
+                  <tr><td><code>INGESTION_RATE_LIMIT_PER_MINUTE</code></td><td>600</td><td>Per-API-key HTTP ingestion limit.</td></tr>
+                  <tr><td><code>INGESTION_MAX_FUTURE_SKEW_SECONDS</code></td><td>300</td><td>Maximum event timestamp skew into the future.</td></tr>
+                  <tr><td><code>INGESTION_ALLOWED_LATENESS_SECONDS</code></td><td>300</td><td>Event-time grace period used to classify late events.</td></tr>
+                </tbody>
+              </table></div>
+            </details>
+
+            <details class="config-group">
+              <summary>Webhook worker</summary>
+              <div class="table-wrap"><table>
+                <thead><tr><th>Variable</th><th>Default</th><th>Purpose</th></tr></thead>
+                <tbody>
+                  <tr><td><code>WEBHOOK_WORKER_ENABLED</code></td><td>true</td><td>Enable background delivery.</td></tr>
+                  <tr><td><code>WEBHOOK_WORKER_POLL_INTERVAL_MS</code> / <code>INITIAL_DELAY_MS</code></td><td>1000 / 1000</td><td>Polling and startup delay.</td></tr>
+                  <tr><td><code>WEBHOOK_WORKER_BATCH_SIZE</code></td><td>25</td><td>Outbox rows claimed per poll.</td></tr>
+                  <tr><td><code>WEBHOOK_WORKER_MAX_ATTEMPTS</code></td><td>8</td><td>Attempts before dead-lettering.</td></tr>
+                  <tr><td><code>WEBHOOK_WORKER_BASE_DELAY_MS</code> / <code>MAX_DELAY_MS</code></td><td>5000 / 900000</td><td>Retry backoff base and cap.</td></tr>
+                  <tr><td><code>WEBHOOK_WORKER_LEASE_DURATION_MS</code></td><td>300000</td><td>Claim lease for restart recovery.</td></tr>
+                  <tr><td><code>WEBHOOK_WORKER_CONNECT_TIMEOUT_MS</code> / <code>READ_TIMEOUT_MS</code></td><td>3000 / 5000</td><td>Outbound HTTP timeouts.</td></tr>
+                  <tr><td><code>WEBHOOK_SIGNING_SECRET</code></td><td>development fallback</td><td>HMAC secret for signed callbacks. Must be at least 32 characters.</td></tr>
+                </tbody>
+              </table></div>
+            </details>
+
+            <details class="config-group">
+              <summary>RabbitMQ connector</summary>
+              <div class="table-wrap"><table>
+                <thead><tr><th>Variable</th><th>Default</th><th>Purpose</th></tr></thead>
+                <tbody>
+                  <tr><td><code>TENGEN_CONNECTOR_MASTER_KEY</code></td><td>empty</td><td>Base64-encoded random 32-byte AES-256-GCM key used to encrypt broker passwords.</td></tr>
+                  <tr><td><code>TENGEN_RABBITMQ_ALLOWED_HOSTS</code></td><td>empty</td><td>Exact comma-separated broker host allowlist; required in production.</td></tr>
+                  <tr><td><code>TENGEN_RABBITMQ_CONNECTION_TIMEOUT_MS</code> / <code>HANDSHAKE_TIMEOUT_MS</code></td><td>5000 / 5000</td><td>Broker connection and AMQP handshake timeouts.</td></tr>
+                  <tr><td><code>TENGEN_RABBITMQ_SHUTDOWN_TIMEOUT_MS</code> / <code>DEAD_LETTER_TIMEOUT_MS</code></td><td>5000 / 5000</td><td>Resource shutdown and publisher-confirm timeouts.</td></tr>
+                  <tr><td><code>TENGEN_RABBITMQ_CONSUMERS</code> / <code>PREFETCH</code></td><td>1 / 1</td><td>Listener concurrency and prefetch. Increase only after load testing.</td></tr>
+                </tbody>
+              </table></div>
+            </details>
+
+            <details class="config-group">
+              <summary>Replay, absence, retention, and metrics</summary>
+              <div class="table-wrap"><table>
+                <thead><tr><th>Variable</th><th>Default</th><th>Purpose</th></tr></thead>
+                <tbody>
+                  <tr><td><code>TENGEN_REPLAY_WORKER_ENABLED</code></td><td>true</td><td>Enable analysis-only replay processing.</td></tr>
+                  <tr><td><code>TENGEN_REPLAY_WORKER_POLL_INTERVAL_MS</code> / <code>INITIAL_DELAY_MS</code></td><td>1000 / 1000</td><td>Replay worker polling and startup delay.</td></tr>
+                  <tr><td><code>TENGEN_REPLAY_WORKER_BATCH_SIZE</code> / <code>LEASE_DURATION_MS</code></td><td>100 / 300000</td><td>Replay batch size and restart lease.</td></tr>
+                  <tr><td><code>TENGEN_REPLAY_MAX_RANGE_DAYS</code></td><td>31</td><td>Maximum requested replay range.</td></tr>
+                  <tr><td><code>TENGEN_REPLAY_MAX_MATERIALIZED_OUTPUT_EVENTS</code></td><td>10000</td><td>Maximum output events materialized per job.</td></tr>
+                  <tr><td><code>TENGEN_ABSENCE_WORKER_ENABLED</code></td><td>true</td><td>Enable absence deadline evaluation.</td></tr>
+                  <tr><td><code>TENGEN_ABSENCE_WORKER_POLL_INTERVAL_MS</code> / <code>INITIAL_DELAY_MS</code></td><td>1000 / 1000</td><td>Absence worker polling and startup delay.</td></tr>
+                  <tr><td><code>TENGEN_ABSENCE_WORKER_BATCH_SIZE</code></td><td>100</td><td>Absence instances processed per poll.</td></tr>
+                  <tr><td><code>RETENTION_ENABLED</code> / <code>RETENTION_DAYS</code></td><td>true / 90</td><td>Cleanup of terminal operational records. Rule revisions are retained.</td></tr>
+                  <tr><td><code>RETENTION_BATCH_SIZE</code> / <code>RETENTION_SCHEDULE</code></td><td>1000 / 03:15 UTC cron</td><td>Cleanup batch size and schedule.</td></tr>
+                </tbody>
+              </table></div>
+            </details>
+          </section>
+
+          <section class="doc-section" id="production" data-title="production deployment checklist docker secrets health metrics">
+            <div class="section-heading">
+              <p class="eyebrow">20 / Ship safely</p>
+              <h2>Production checklist</h2>
+              <p>Use the Compose stack as a starting point, but replace every development secret and supply deployment-specific network values.</p>
+            </div>
+            <h3>Minimum production environment</h3>
+            <div class="code-wrap"><pre><code>SPRING_PROFILES_ACTIVE=prod
+ADMIN_PASSWORD=replace-with-a-strong-password
+JWT_SECRET=replace-with-a-random-secret-at-least-32-bytes
+WEBHOOK_SIGNING_SECRET=replace-with-another-random-secret
+CORS_ALLOWED_ORIGINS=https://your-console.example</code></pre></div>
+            <p>If RabbitMQ is used, also configure <code>TENGEN_CONNECTOR_MASTER_KEY</code> and an exact <code>TENGEN_RABBITMQ_ALLOWED_HOSTS</code> list.</p>
+            <h3>Build and start</h3>
+            <div class="code-wrap"><pre><code>docker compose --env-file .env -f tengen/docker-compose.yml up --build -d</code></pre></div>
+            <p>Add <code>--profile rabbitmq</code> when the RabbitMQ service should start with the stack.</p>
+            <div class="content-grid two-up align-start">
+              <div>
+                <h3>Health</h3>
+                <ul class="bullet-list">
+                  <li><code>/actuator/health/liveness</code> is public.</li>
+                  <li><code>/actuator/health/readiness</code> is public.</li>
+                  <li>Other health details require admin authentication.</li>
+                </ul>
+              </div>
+              <div>
+                <h3>Metrics</h3>
+                <p><code>/actuator/prometheus</code> requires admin authentication. Metrics cover ingestion, event-time status, rule evaluation errors, webhook attempts, RabbitMQ messages, absence instances, replay jobs, and control operations.</p>
+              </div>
+            </div>
+            <div class="notice notice-warning"><span class="notice-icon">!</span><div>Back up an existing PostgreSQL database before first startup with a version that introduces migrations. Flyway owns schema changes and Hibernate validates the resulting schema.</div></div>
+          </section>
+
+          <section class="doc-section" id="glossary" data-title="glossary terminology event rule revision watermark outbox">
+            <div class="section-heading">
+              <p class="eyebrow">21 / Reference</p>
+              <h2>Glossary</h2>
+              <p>A short vocabulary guide for the concepts used throughout the console and API.</p>
+            </div>
+            <div class="glossary-grid">
+              <div><dt>Event</dt><dd>A JSON business occurrence with type, source, optional event time, and data.</dd></div>
+              <div><dt>Rule</dt><dd>A named configuration that evaluates events and optionally creates an action.</dd></div>
+              <div><dt>Revision</dt><dd>An immutable snapshot of a rule configuration at a point in its lifecycle.</dd></div>
+              <div><dt>Group key</dt><dd>A value resolved from event data that isolates aggregate, sequence, absence, or action state.</dd></div>
+              <div><dt>Watermark</dt><dd>Durable event-time progress used to classify late events and close absence windows.</dd></div>
+              <div><dt>Outbox</dt><dd>A committed webhook delivery intent waiting for the background worker.</dd></div>
+              <div><dt>Dead letter</dt><dd>A terminal delivery or broker-message destination for work that cannot be processed normally.</dd></div>
+              <div><dt>Replay</dt><dd>An analysis-only evaluation of historical events against an immutable rule revision.</dd></div>
+            </div>
+          </section>
+
+          <section class="doc-section" id="api-reference" data-title="api reference endpoints rest curl create rule event auth">
+            <div class="section-heading">
+              <p class="eyebrow">22 / Reference</p>
+              <h2>API reference</h2>
+              <p>The backend listens on <code>http://localhost:8080</code> locally. The Next.js admin console proxies browser requests through its own <code>/api/</code> routes; direct backend calls use the paths below.</p>
+            </div>
+
+            <h3>Authentication model</h3>
+            <ul class="bullet-list">
+              <li>Admin endpoints use <code>Authorization: Bearer &lt;access-token&gt;</code> when called directly.</li>
+              <li><code>POST /api/auth/login</code> returns an access/refresh token pair. The frontend stores these in httpOnly cookies through its session route.</li>
+              <li>Event ingestion uses <code>X-API-Key</code>, not the admin JWT.</li>
+              <li>Public health probes are the liveness and readiness endpoints. Other API routes are protected.</li>
+            </ul>
+
+            <h3>Get an admin access token</h3>
+            <div class="code-wrap"><pre><code>curl -sS -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin"}'</code></pre></div>
+            <p>Use the returned <code>accessToken</code> in an <code>Authorization</code> header for admin endpoints. Use the returned <code>refreshToken</code> with <code>/api/auth/refresh</code> when the access token expires.</p>
+
+            <h3>Endpoint index</h3>
+            <div class="table-wrap endpoint-table">
+              <table>
+                <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Purpose</th></tr></thead>
+                <tbody>
+                  <tr class="endpoint-group"><td colspan="4">Authentication</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/api/auth/login</code></td><td>Public</td><td>Exchange admin credentials for access and refresh tokens.</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/api/auth/refresh</code></td><td>Public</td><td>Rotate a refresh session and issue a new token pair.</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/api/auth/logout</code></td><td>Public</td><td>Revoke a refresh session.</td></tr>
+
+                  <tr class="endpoint-group"><td colspan="4">Event ingestion</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/api/events</code></td><td><code>X-API-Key</code></td><td>Validate, persist, evaluate, and report one event. Supports <code>Idempotency-Key</code>.</td></tr>
+
+                  <tr class="endpoint-group"><td colspan="4">Rules and rule tests</td></tr>
+                  <tr><td><code>GET</code></td><td><code>/api/rules</code></td><td>Admin JWT</td><td>List non-archived rules. Use <code>?includeArchived=true</code> for all.</td></tr>
+                  <tr><td><code>GET</code></td><td><code>/api/rules/{id}</code></td><td>Admin JWT</td><td>Read a rule and its current revision ETag.</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/api/rules</code></td><td>Admin JWT</td><td>Create and validate a rule.</td></tr>
+                  <tr><td><code>PUT</code></td><td><code>/api/rules/{id}</code></td><td>Admin JWT</td><td>Update a rule; optionally protect with <code>If-Match</code>.</td></tr>
+                  <tr><td><code>DELETE</code></td><td><code>/api/rules/{id}</code></td><td>Admin JWT</td><td>Archive a rule. It does not physically delete history.</td></tr>
+                  <tr><td><code>PATCH</code></td><td><code>/api/rules/{id}/toggle</code></td><td>Admin JWT</td><td>Activate or deactivate a rule.</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/api/rules/{id}/unarchive</code></td><td>Admin JWT</td><td>Unarchive a rule; it remains inactive until activated.</td></tr>
+                  <tr><td><code>GET</code></td><td><code>/api/rules/{id}/revisions</code></td><td>Admin JWT</td><td>List immutable revisions.</td></tr>
+                  <tr><td><code>GET</code></td><td><code>/api/rules/{id}/revisions/{revision}</code></td><td>Admin JWT</td><td>Read one revision snapshot.</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/api/rules/{id}/revisions/{revision}/restore</code></td><td>Admin JWT</td><td>Restore a snapshot as a new inactive revision.</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/api/rules/test</code></td><td>Admin JWT</td><td>Run a side-effect-free single-rule or all-active-rules simulation.</td></tr>
+
+                  <tr class="endpoint-group"><td colspan="4">API keys</td></tr>
+                  <tr><td><code>GET</code></td><td><code>/api/keys</code></td><td>Admin JWT</td><td>List key metadata; raw secrets are not returned.</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/api/keys</code></td><td>Admin JWT</td><td>Create a scoped producer key and return its raw value once.</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/api/keys/{id}/revoke</code></td><td>Admin JWT</td><td>Revoke a producer key.</td></tr>
+
+                  <tr class="endpoint-group"><td colspan="4">Event Explorer</td></tr>
+                  <tr><td><code>GET</code></td><td><code>/api/event-history</code></td><td>Admin JWT</td><td>Search and paginate accepted event summaries.</td></tr>
+                  <tr><td><code>GET</code></td><td><code>/api/event-history/{id}</code></td><td>Admin JWT</td><td>Read event payload, outcomes, timing, origin, and linked deliveries.</td></tr>
+
+                  <tr class="endpoint-group"><td colspan="4">Webhook delivery administration</td></tr>
+                  <tr><td><code>GET</code></td><td><code>/api/webhook-deliveries</code></td><td>Admin JWT</td><td>Search delivery history by status, rule, event, time, or text.</td></tr>
+                  <tr><td><code>GET</code></td><td><code>/api/webhook-deliveries/{id}</code></td><td>Admin JWT</td><td>Read one delivery detail.</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/api/webhook-deliveries/{id}/retry</code></td><td>Admin JWT</td><td>Retry one dead-lettered delivery.</td></tr>
+
+                  <tr class="endpoint-group"><td colspan="4">Replay and backfill</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/api/replay-jobs</code></td><td>Admin JWT</td><td>Create an analysis-only job.</td></tr>
+                  <tr><td><code>GET</code></td><td><code>/api/replay-jobs</code></td><td>Admin JWT</td><td>List and filter replay jobs.</td></tr>
+                  <tr><td><code>GET</code></td><td><code>/api/replay-jobs/{id}</code></td><td>Admin JWT</td><td>Read job status and progress.</td></tr>
+                  <tr><td><code>GET</code></td><td><code>/api/replay-jobs/{id}/transitions</code></td><td>Admin JWT</td><td>Read lifecycle transition audit.</td></tr>
+                  <tr><td><code>GET</code></td><td><code>/api/replay-jobs/{id}/outcomes</code></td><td>Admin JWT</td><td>Read paginated event outcomes; filter by <code>matched</code>.</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/api/replay-jobs/{id}/pause</code></td><td>Admin JWT</td><td>Pause or request pause using <code>If-Match</code>.</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/api/replay-jobs/{id}/resume</code></td><td>Admin JWT</td><td>Resume a paused job.</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/api/replay-jobs/{id}/cancel</code></td><td>Admin JWT</td><td>Cancel a queued, running, paused, or failed job.</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/api/replay-jobs/{id}/retry</code></td><td>Admin JWT</td><td>Retry a failed retryable job from its checkpoint.</td></tr>
+
+                  <tr class="endpoint-group"><td colspan="4">RabbitMQ connector</td></tr>
+                  <tr><td><code>GET</code></td><td><code>/api/connectors/rabbitmq</code></td><td>Admin JWT</td><td>Read connector configuration and runtime status.</td></tr>
+                  <tr><td><code>PUT</code></td><td><code>/api/connectors/rabbitmq</code></td><td>Admin JWT</td><td>Save a connector draft; supports configuration version or <code>If-Match</code>.</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/api/connectors/rabbitmq/test</code></td><td>Admin JWT</td><td>Test the current saved connection and topology.</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/api/connectors/rabbitmq/enable</code></td><td>Admin JWT</td><td>Start the consumer after a successful current-version test.</td></tr>
+                  <tr><td><code>POST</code></td><td><code>/api/connectors/rabbitmq/disable</code></td><td>Admin JWT</td><td>Stop consumption while retaining saved configuration.</td></tr>
+
+                  <tr class="endpoint-group"><td colspan="4">Console settings</td></tr>
+                  <tr><td><code>GET</code></td><td><code>/api/settings</code></td><td>Admin JWT</td><td>Read persisted theme, accent, and time-display preferences.</td></tr>
+                  <tr><td><code>PUT</code></td><td><code>/api/settings</code></td><td>Admin JWT</td><td>Update console preferences.</td></tr>
+
+                  <tr class="endpoint-group"><td colspan="4">Actuator</td></tr>
+                  <tr><td><code>GET</code></td><td><code>/actuator/health/liveness</code></td><td>Public</td><td>Liveness probe.</td></tr>
+                  <tr><td><code>GET</code></td><td><code>/actuator/health/readiness</code></td><td>Public</td><td>Readiness probe.</td></tr>
+                  <tr><td><code>GET</code></td><td><code>/actuator/health</code></td><td>Admin JWT</td><td>Authenticated health details.</td></tr>
+                  <tr><td><code>GET</code></td><td><code>/actuator/prometheus</code></td><td>Admin JWT</td><td>Prometheus metrics.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3>Paging and filter parameters</h3>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Endpoint</th><th>Parameters</th></tr></thead>
+                <tbody>
+                  <tr><td><code>/api/rules</code></td><td><code>includeArchived</code> (default <code>false</code>).</td></tr>
+                  <tr><td>Revision, delivery, replay, and outcome lists</td><td><code>page</code> defaults to <code>0</code>; <code>size</code> defaults to <code>25</code>. The server validates the maximum for each list.</td></tr>
+                  <tr><td><code>/api/event-history</code></td><td><code>eventId</code>, <code>type</code>, <code>source</code>, <code>apiKeyId</code>, <code>matched</code>, <code>traceAvailable</code>, <code>eventTimeStatus</code>, <code>ingestionOrigin</code> (or <code>origin</code>), <code>from</code>, <code>to</code>.</td></tr>
+                  <tr><td><code>/api/webhook-deliveries</code></td><td><code>status</code>, <code>ruleId</code>, <code>eventId</code>, <code>from</code>, <code>to</code>, <code>search</code>.</td></tr>
+                  <tr><td><code>/api/replay-jobs</code></td><td><code>status</code>, <code>ruleId</code>, <code>ruleRevision</code>, <code>createdBy</code>, <code>jobId</code>, <code>from</code>, <code>to</code>.</td></tr>
+                  <tr><td><code>/api/replay-jobs/{id}/outcomes</code></td><td><code>matched</code> filters matched-only or no-match-only outcomes.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3>Create a condition rule through the API</h3>
+            <div class="code-wrap"><pre><code>curl -sS -X POST http://localhost:8080/api/rules \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "large-payment",
+    "ruleType": "CONDITION",
+    "action": "LOG",
+    "eventType": "payment",
+    "source": "billing",
+    "conditionScript": "data.amount &gt;= 1000",
+    "threshold": 0,
+    "active": true,
+    "sequenceSteps": []
+  }'</code></pre></div>
+            <p>For aggregate, sequence, absence, or webhook rules, add the fields described in the rule sections above. Keep the request contract stable: the backend validates the combination of fields for the selected rule type and action.</p>
+          </section>
+        </main>
+
+        <footer class="site-footer">
+          <span>Tengen documentation</span>
+          <span>MIT licensed</span>
+          <a href="../README.md">Return to README</a>
+        </footer>
+      </div>
+    </div>
+    <script src="script.js" defer></script>
+  </body>
+</html>
