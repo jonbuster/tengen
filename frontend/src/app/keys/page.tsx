@@ -15,18 +15,15 @@ import {
   MenuItem,
   Select,
   Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   TextField,
   Typography,
 } from "@mui/material";
+import BlockIcon from "@mui/icons-material/Block";
+import { GridActionsCellItem, type GridColDef, type GridRowParams } from "@mui/x-data-grid";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { api, errorMessage } from "@/lib/api";
+import { ClientDataGrid } from "@/components/ClientDataGrid";
 import { formatTimestamp } from "@/lib/formatters";
 import { usePreferences } from "@/lib/preferences";
 import { ApiKey, ApiKeyRequest, ResponseMode } from "@/lib/types";
@@ -58,6 +55,74 @@ export default function ApiKeysPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["api-keys"] }),
     onError: (err) => setError(errorMessage(err)),
   });
+  const revokeKey = revokeMutation.mutate;
+
+  const columns = useMemo<GridColDef<ApiKey>[]>(() => [
+    { field: "id", headerName: "ID", width: 70 },
+    { field: "name", headerName: "Name", flex: 1, minWidth: 180 },
+    {
+      field: "prefix",
+      headerName: "Prefix",
+      width: 120,
+      renderCell: (params) => <code>{params.value}...</code>,
+    },
+    {
+      field: "responseMode",
+      headerName: "Response Mode",
+      width: 155,
+      valueGetter: (_value, row: ApiKey) => row.responseMode === "FULL" ? "Full details" : "Compact summary",
+    },
+    {
+      field: "allowedEventTypes",
+      headerName: "Allowed Event Types",
+      flex: 1,
+      minWidth: 190,
+      valueGetter: (_value, row: ApiKey) => row.allowedEventTypes?.join(", ") || "All",
+    },
+    {
+      field: "allowedSources",
+      headerName: "Allowed Sources",
+      flex: 1,
+      minWidth: 160,
+      valueGetter: (_value, row: ApiKey) => row.allowedSources?.join(", ") || "All",
+    },
+    {
+      field: "active",
+      headerName: "Status",
+      width: 120,
+      renderCell: (params) => (
+        <Chip
+          label={params.value ? "Active" : "Revoked"}
+          color={params.value ? "success" : "default"}
+          size="small"
+        />
+      ),
+    },
+    {
+      field: "expiresAt",
+      headerName: "Expires",
+      width: 180,
+      valueGetter: (_value, row: ApiKey) => row.expiresAt
+        ? formatTimestamp(row.expiresAt, preferences.timeDisplay)
+        : "Never",
+    },
+    {
+      field: "actions",
+      type: "actions",
+      headerName: "Actions",
+      width: 90,
+      getActions: (params: GridRowParams<ApiKey>) => params.row.active
+        ? [
+            <GridActionsCellItem
+              key="revoke"
+              icon={<BlockIcon />}
+              label="Revoke"
+              onClick={() => revokeKey(params.row.id)}
+            />,
+          ]
+        : [],
+    },
+  ], [preferences.timeDisplay, revokeKey]);
 
   return (
     <Container maxWidth={false} sx={{ py: 4 }}>
@@ -88,61 +153,15 @@ export default function ApiKeysPage() {
         </Alert>
       )}
 
-      <TableContainer>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell>Prefix</TableCell>
-              <TableCell>Response Mode</TableCell>
-              <TableCell>Allowed Event Types</TableCell>
-              <TableCell>Allowed Sources</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Expires</TableCell>
-              <TableCell>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {keys.map((key) => (
-              <TableRow key={key.id}>
-                <TableCell>{key.name}</TableCell>
-                <TableCell>
-                  <code>{key.prefix}...</code>
-                </TableCell>
-                <TableCell>
-                  {key.responseMode === "FULL" ? "Full details" : "Compact summary"}
-                </TableCell>
-                <TableCell>
-                  {key.allowedEventTypes?.join(", ") || "All"}
-                </TableCell>
-                <TableCell>{key.allowedSources?.join(", ") || "All"}</TableCell>
-                <TableCell>
-                  <Chip
-                    label={key.active ? "Active" : "Revoked"}
-                    color={key.active ? "success" : "default"}
-                    size="small"
-                  />
-                </TableCell>
-                <TableCell>{key.expiresAt ? formatTimestamp(key.expiresAt, preferences.timeDisplay) : "Never"}</TableCell>
-                <TableCell>
-                  {key.active && (
-                    <Button size="small" color="error" onClick={() => revokeMutation.mutate(key.id)}>
-                      Revoke
-                    </Button>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-            {!isLoading && keys.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={8} align="center">
-                  No API keys yet.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+      <Box sx={{ height: 560, width: "100%" }}>
+        <ClientDataGrid
+          rows={keys}
+          columns={columns}
+          loading={isLoading}
+          getRowId={(row) => row.id}
+          disableRowSelectionOnClick
+        />
+      </Box>
 
       <CreateKeyDialog
         open={dialogOpen}
