@@ -311,5 +311,5 @@ Plan: [`2026-08-04-1244-replay-backfill-job-mvp-plan.md`](2026-08-04-1244-replay
 2. Absence patterns — implemented with durable grouped expectations, event-time deadlines, idle-route watermark advancement, webhook integration, and Event Explorer visibility.
 3. Watermarks and allowed lateness — implemented: durable source/type watermarks, a configurable five-minute grace period, late-event classification, too-late side-effect suppression, and absence-route idle advancement are available; correction and retraction remain future work.
 4. Replay/backfill — implemented for isolated `CONDITION` and `AGGREGATE` analysis with immutable inputs and no live actions; sequence, absence, and action-enabled replay remain future work.
-5. Broker connectors — Kafka ingestion is the next planned slice; production ingestion currently uses the HTTP event API.
+5. Broker connectors — RabbitMQ ingestion with the admin UI is the next planned slice; production ingestion currently uses the HTTP event API.
 6. Event API response controls — implemented: new API keys default to compact producer responses, full responses remain available by choice, and successful responses expose an explicit `X-Idempotency-Replayed` header.
