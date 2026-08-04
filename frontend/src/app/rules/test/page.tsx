@@ -107,6 +107,9 @@ export default function TestPage() {
   return (
     <Container maxWidth={false} sx={{ py: 4 }}>
       <Typography variant="h5" sx={{ mb: 3 }}>Run Test</Typography>
+      <Alert severity="info" sx={{ mb: 3 }}>
+        Simulation only: this test evaluates the sample in memory. It does not save the event, change live rule or trigger state, create webhook deliveries, or execute the configured action, including <strong>LOG_ONLY</strong>. Aggregate tests may read existing events in the window, but the sample event is not saved.
+      </Alert>
 
       <Stack spacing={2} sx={{ mb: 3 }}>
         <FormControl component="fieldset">

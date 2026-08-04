@@ -30,12 +30,12 @@ const DRAWER_WIDTH = 240;
 
 const NAV_ITEMS = [
   { href: "/rules", label: "Rules", icon: <RuleIcon /> },
-  { href: "/rules/test", label: "Run Test", icon: <ScienceIcon /> },
-  { href: "/keys", label: "API Keys", icon: <KeyIcon /> },
-  { href: "/deliveries", label: "Deliveries", icon: <HistoryIcon /> },
+  { href: "/run-test", label: "Run Test", icon: <ScienceIcon /> },
   { href: "/events", label: "Events", icon: <EventNoteIcon /> },
+  { href: "/deliveries", label: "Deliveries", icon: <HistoryIcon /> },
   { href: "/replays", label: "Replays", icon: <ReplayIcon /> },
   { href: "/connectors/rabbitmq", label: "Connectors", icon: <CableIcon /> },
+  { href: "/keys", label: "API Keys", icon: <KeyIcon /> },
   { href: "/settings", label: "Settings", icon: <SettingsIcon /> },
 ];
 
