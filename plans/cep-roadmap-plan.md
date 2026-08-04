@@ -298,7 +298,7 @@ Plan: [`2026-08-04-1244-replay-backfill-job-mvp-plan.md`](2026-08-04-1244-replay
 
 ## Next Planned Sequence
 
-1. [Kafka connector MVP](2026-08-04-1244-kafka-connector-mvp-plan.md) — add optional broker ingestion with durable message deduplication and commit-after-database semantics.
+1. [RabbitMQ connector with admin UI MVP](2026-08-04-1515-rabbitmq-connector-ui-mvp-plan.md) - add UI-configured RabbitMQ ingestion with durable message deduplication and commit-after-database semantics.
 2. [Replay job controls and history](2026-08-04-1244-replay-job-controls-history-plan.md) — add pause, resume, cancellation, retry, searchable history, and transition auditing.
 
 ## Planned but Unscheduled

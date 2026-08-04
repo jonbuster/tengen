@@ -371,7 +371,7 @@ webhook, or delivery record changed.
 
 ## Ordered Follow-Ups
 
-1. Implement the [Kafka connector MVP](2026-08-04-1244-kafka-connector-mvp-plan.md).
+1. Implement the [RabbitMQ connector with admin UI MVP](2026-08-04-1515-rabbitmq-connector-ui-mvp-plan.md).
 2. Implement [replay job controls and history](2026-08-04-1244-replay-job-controls-history-plan.md).
 3. Plan sequence and absence replay only after their job-scoped state machines
    and finite-range closure semantics are specified.

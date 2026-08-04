@@ -23,8 +23,8 @@ Implement this plan only after the
 - atomic outcome/state/checkpoint batches; and
 - basic job detail and outcome APIs.
 
-The [Kafka connector MVP](2026-08-04-1244-kafka-connector-mvp-plan.md) may be
-implemented before this slice but is not controlled by replay-job endpoints.
+The [RabbitMQ connector with admin UI MVP](2026-08-04-1515-rabbitmq-connector-ui-mvp-plan.md)
+may be implemented before this slice but is not controlled by replay-job endpoints.
 
 ## Goals
 

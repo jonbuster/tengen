@@ -420,13 +420,13 @@ dead-letter handling, delivery-history console, watermarks, and absence patterns
 are implemented.
 
 Safe replay/backfill analysis is now implemented. The next planned sequence
-adds optional Kafka ingestion and replay-job controls and history. See the
-[CEP roadmap](plans/cep-roadmap-plan.md) for completed work and ordering.
+adds UI-configured RabbitMQ ingestion and replay-job controls and history. See
+the [CEP roadmap](plans/cep-roadmap-plan.md) for completed work and ordering.
 
 Detailed roadmap plans:
 
 - Implemented: [Replay and backfill job MVP](plans/2026-08-04-1244-replay-backfill-job-mvp-plan.md)
-- Next: [Kafka connector MVP](plans/2026-08-04-1244-kafka-connector-mvp-plan.md)
+- Next: [RabbitMQ connector with admin UI MVP](plans/2026-08-04-1515-rabbitmq-connector-ui-mvp-plan.md)
 - Then: [Replay job controls and history](plans/2026-08-04-1244-replay-job-controls-history-plan.md)
 
 Planned but not currently scheduled:
