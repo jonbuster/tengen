@@ -1,0 +1,944 @@
+TENGEN LLM REFERENCE
+====================
+
+Document purpose
+----------------
+This file is a plain-text, LLM-friendly reference for the Tengen web app. Use it to answer developer questions about setup, event ingestion, rule creation, event processing, webhooks, operations, and the backend API.
+
+Product: Tengen
+Documentation site: https://tengen-gate.netlify.app/
+Repository layout: Spring Boot backend in tengen/ and Next.js admin console in frontend/.
+Local backend: http://localhost:8080
+Local admin console: http://localhost:3000
+Last reviewed: 2026-08-05
+
+How an AI assistant should use this file
+-----------------------------------------
+1. Answer from the behavior documented here. Do not invent fields, endpoints, rule types, or capabilities.
+2. Explain the product workflow first. Give API details after the console workflow unless the user explicitly asks for API usage.
+3. Distinguish these three modes:
+   - Live ingestion: persists the event and can change rule state or create webhook deliveries.
+   - Run Test: simulates evaluation and has no live side effects.
+   - Replay: analyzes historical events and has no live side effects.
+4. When a value is configurable, state the documented default and the environment variable that changes it.
+5. If a question is not covered here, say that the behavior is not confirmed instead of guessing. Ask for the relevant version or source code when exact behavior is required.
+6. For troubleshooting, identify the ingestion path first: HTTP, RabbitMQ, Run Test, or Replay. Then check authentication, event time, rule status, and action delivery.
+7. Treat API keys and webhook signing secrets as sensitive. Never ask a user to paste a raw production key or secret into chat.
+
+PRODUCT SUMMARY
+===============
+
+Tengen is a complex event processing web app. It ingests business events through HTTP or RabbitMQ, evaluates configurable rules against those events and their event-time history, records the processing trace, and can trigger durable asynchronous webhook actions.
+
+Typical use cases
+-----------------
+- Payment fraud detection: match unusually large payments or repeated payment failures and notify a fraud service.
+- Login security monitoring: count failed logins for a user, account, or device within a time window.
+- Order workflow tracking: verify that order creation, payment, and shipment occur in the expected sequence.
+- Missing-event detection: detect when a payment confirmation, delivery update, or other expected event does not arrive before a deadline.
+- Operational alerts: monitor business activity and send webhook notifications when thresholds or patterns are reached.
+
+Core processing flow
+--------------------
+Producer -> HTTP or RabbitMQ ingestion -> authentication and validation -> event-time classification -> persistence -> rule evaluation -> action outbox -> webhook worker -> delivery history.
+
+Tengen is designed for real-time event decisions and operational automation. It is not primarily a batch analytics warehouse. Use Replay for historical analysis and comparison, not to produce live side effects.
+
+CONSOLE MAP
+===========
+
+The Next.js admin console contains these main areas:
+- Rules: create, edit, activate, deactivate, archive, unarchive, inspect revisions, and restore rule revisions.
+- Run Test: simulate a condition, aggregate, sequence, absence, or all-rules evaluation without changing live state.
+- Events / Event Explorer: search accepted events and inspect processing traces, rule outcomes, timing, origins, and linked deliveries.
+- Deliveries: search webhook delivery history, inspect attempts and errors, and retry dead-lettered deliveries.
+- Replays: run analysis-only jobs against historical events and control their lifecycle.
+- Connectors / RabbitMQ: save, test, enable, and disable the backend-managed RabbitMQ consumer.
+- API Keys: create scoped producer keys, view metadata, and revoke keys.
+- Settings: manage theme, accent color, and local/UTC time display.
+
+LOCAL DEVELOPMENT
+=================
+
+Prerequisites
+-------------
+- Docker with Docker Compose
+- Java 21
+- Node.js and npm
+
+Start PostgreSQL and RabbitMQ
+-----------------------------
+From the repository root:
+
+docker compose -f tengen/docker-compose.yml --profile rabbitmq up -d db rabbitmq
+
+RabbitMQ is optional for HTTP-only development. The local broker uses AMQP port 5672 and management UI port 15672. Default local RabbitMQ credentials are tengen / tengen.
+
+Start the backend
+-----------------
+
+cd tengen
+./mvnw spring-boot:run
+
+Start the frontend
+------------------
+
+cd frontend
+npm ci
+npm run dev
+
+The admin console is normally available at http://localhost:3000 and the backend at http://localhost:8080.
+
+Development credentials and secrets
+------------------------------------
+The development admin login defaults to username admin and password admin. Before using Tengen outside local development, replace ADMIN_PASSWORD, JWT_SECRET, and WEBHOOK_SIGNING_SECRET. Production also requires the RabbitMQ encryption key and host allowlist when RabbitMQ is enabled.
+
+First working workflow
+----------------------
+1. Start the database and application services.
+2. Sign in to the admin console.
+3. Open API Keys and create an active producer key.
+4. Create a CONDITION rule, for example data.amount >= 1000.
+5. Send a payment event through HTTP or RabbitMQ.
+6. Open Events to inspect the accepted event, event-time status, rule match, and linked webhook delivery.
+
+EVENT MODEL
+===========
+
+Event envelope
+-------------
+Every event uses this JSON envelope:
+
+{
+  "type": "payment",
+  "source": "billing",
+  "timestamp": "2026-08-04T14:30:00Z",
+  "data": {
+    "amount": 2500,
+    "currency": "PHP",
+    "country": "PH",
+    "userId": "user-123"
+  }
+}
+
+Event fields
+------------
+- type: required business event name, such as payment or login.failed.
+- source: required producer or domain name, such as billing or identity.
+- timestamp: optional ISO-8601 event time. If omitted, Tengen uses the current time.
+- data: required JSON object. Business fields inside data can be used in conditions, aggregate fields, and group-by paths.
+
+Processing stages
+-----------------
+1. Authorize the producer. HTTP uses the X-API-Key header. RabbitMQ uses the API key saved on the connector.
+2. Validate the envelope, body size, API-key scope, timestamp, and ingestion limits.
+3. Classify the event by event time and the durable watermark for its type/source stream.
+4. Persist the event and ingestion origin.
+5. Evaluate active, valid rules.
+6. Persist rule outcomes and any action intent.
+7. Deliver webhook actions asynchronously through the durable outbox worker.
+8. Expose the trace in Event Explorer.
+
+HTTP EVENT INGESTION
+====================
+
+When to use HTTP
+----------------
+Use POST /api/events when a producer can make an HTTP request for each event and needs a synchronous acceptance and processing response.
+
+Before sending
+--------------
+1. Open API Keys and choose New API Key.
+2. Give the key a recognizable name.
+3. Optionally set comma-separated allowed event types and sources. A blank scope allows all values for that dimension.
+4. Choose Compact summary for normal producers or Full details when the producer needs aggregate and sequence results.
+5. Copy the raw tg_... key immediately. It is shown only once; only its SHA-256 hash is stored.
+
+Example request
+---------------
+
+curl -X POST http://localhost:8080/api/events \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: tg_your_raw_key" \
+  -H "Idempotency-Key: payment-123" \
+  -d '{
+    "type": "payment",
+    "source": "billing",
+    "timestamp": "2026-08-04T14:30:00Z",
+    "data": {
+      "amount": 2500,
+      "country": "PH"
+    }
+  }'
+
+Response behavior
+-----------------
+An accepted event returns HTTP 200. The response mode is determined by the API key.
+
+Compact response includes:
+- status
+- matched
+- rules
+- queuedRules
+- suppressedRules
+- eventTimeStatus
+
+Full response includes the original event plus status, matched, rules, queuedRules, suppressedRules, eventTimeStatus, aggregates, and sequences.
+
+Typical compact response:
+
+{
+  "status": "accepted",
+  "matched": true,
+  "rules": ["large-payment"],
+  "queuedRules": [],
+  "suppressedRules": [],
+  "eventTimeStatus": "ON_TIME"
+}
+
+Idempotent retries
+------------------
+Use one Idempotency-Key for each logical event. The key is scoped to the API key.
+- Same key and equivalent payload: Tengen returns the original completed response and does not process the event again.
+- Same key with a different payload: returns 409 Conflict.
+- Same key while the first request is still processing: returns 409 Conflict; retry after completion.
+- A new request has X-Idempotency-Replayed: false.
+- A completed replay has X-Idempotency-Replayed: true.
+
+HTTP guardrails and common statuses
+-----------------------------------
+- 401: missing or invalid X-API-Key.
+- 403: authenticated API key is outside its allowed event type or source scope.
+- 413: request body exceeds INGESTION_MAX_BODY_BYTES, 1 MiB by default.
+- 429: API-key rate limit exceeded; default is 600 requests per minute. Check Retry-After.
+- Future timestamps beyond INGESTION_MAX_FUTURE_SKEW_SECONDS are rejected; default is 300 seconds.
+- type and source are required.
+- data must be a JSON object.
+
+RABBITMQ INGESTION
+==================
+
+Connector model
+---------------
+Tengen manages one backend consumer for one existing input queue. The browser never connects to RabbitMQ. The input queue and dead-letter exchange must exist before the connector test can succeed.
+
+Example local topology:
+
+tengen.input       --events------> tengen.events
+tengen.dead-letter --dead-letter-> tengen.events.dlq
+
+The names are examples. Configure the actual queue, exchange, routing key, and broker settings in the Connectors page.
+
+Connector workflow
+------------------
+1. Create an active Tengen API key whose type/source scope covers broker messages.
+2. Open Connectors and choose RabbitMQ.
+3. Enter broker, queue, dead-letter, API-key, body-limit, and retry settings.
+4. Save draft. This increments the configuration version and clears the previous test result.
+5. Test connection. Tengen checks credentials, virtual-host access, the input queue, and the dead-letter exchange.
+6. Enable consumption. Enabling is blocked until the current saved version has a successful test.
+
+Message contract
+----------------
+Publish persistent UTF-8 JSON with content_type=application/json and a unique AMQP message_id. The body uses the same event envelope as HTTP ingestion.
+
+Message behavior
+----------------
+- Valid message with a new message_id: persist, evaluate, record RabbitMQ origin, and acknowledge.
+- Repeated message_id: use the durable receipt for deduplication and acknowledge without creating another event.
+- Missing message ID, invalid JSON, wrong content type, body too large, or API-key scope rejection: classify as permanent, publish to the configured dead-letter route after confirmation, then acknowledge the original.
+- Transient processing failure: retry with configured backoff; after exhaustion, dead-letter and acknowledge.
+- Dead-letter publish without publisher confirmation: pause the connector so a message is not acknowledged without a confirmed dead-letter copy.
+
+RabbitMQ watermark header
+-------------------------
+Watermark processing is enabled by default. To opt out for one message, set:
+
+x-tengen-watermark: false
+
+Missing, malformed, or non-false values keep watermark processing enabled. An opted-out message is still authenticated, persisted, and evaluated, but does not create or update a watermark and has no event-time lateness classification. This header is a processing hint, not a security control.
+
+EVENT TIME AND LATENESS
+=======================
+
+Watermark model
+---------------
+Tengen maintains a durable watermark per event type and source. The watermark is based on the highest observed event time minus the allowed lateness period.
+
+Default: INGESTION_ALLOWED_LATENESS_SECONDS=300.
+
+Statuses
+--------
+- ON_TIME: event is at or beyond current stream progress; persist and evaluate normally.
+- LATE_ACCEPTED: event is older than the current maximum but newer than the watermark; persist and evaluate, while keeping the watermark monotonic.
+- TOO_LATE: event is at or before the watermark; persist and accept, but do not match rules, change rule state, or create webhook actions.
+
+Absence deadlines close against the expected event stream watermark. When a stream is idle, the absence worker can advance that route using wall-clock progress so pending expectations do not wait forever for another event.
+
+RULE MODEL
+==========
+
+Rules are named, validated, versioned configurations. A rule has a rule type and an action. Only active, non-archived, valid rules participate in live evaluation.
+
+Rule types
+----------
+- CONDITION: one event matches an exact type/source pre-filter and an Aviator condition.
+- AGGREGATE: a count or numeric calculation reaches a threshold in a moving event-time window.
+- SEQUENCE: two to five ordered event steps complete within one event-time window.
+- ABSENCE: a starting event opens an expectation, and the rule triggers if the expected event does not arrive before its deadline.
+
+Actions
+-------
+- LOG: record the match only.
+- WEBHOOK: record the match and create an asynchronous delivery intent.
+
+Shared rule fields
+------------------
+- name: unique human-readable identifier, maximum 100 characters.
+- ruleType: CONDITION, AGGREGATE, SEQUENCE, or ABSENCE.
+- action: LOG or WEBHOOK.
+- eventType and source: exact pre-filter for condition, aggregate, and absence start events.
+- conditionScript: Aviator condition for condition, aggregate, and absence start evaluation.
+- windowSeconds: positive event-time window for aggregate, sequence, and absence rules.
+- groupBy: optional dotted path such as data.userId, data.orderId, or data.deviceId.
+- threshold: numeric threshold for aggregate rules.
+- triggerMode: EVERY_MATCH, EDGE, or ONCE_PER_WINDOW where supported.
+- callbackUrl: required for WEBHOOK action.
+- cooldownSeconds: optional delivery suppression interval.
+- expectedEventType, expectedSource, expectedConditionScript: expected event fields for ABSENCE rules.
+- sequenceSteps: ordered step list for SEQUENCE rules.
+- active: whether the validated rule should participate in live evaluation.
+
+Rule creation workflow
+----------------------
+1. Open Rules and choose New Rule.
+2. Enter a unique name.
+3. Choose the rule type.
+4. Choose LOG or WEBHOOK.
+5. Configure type/source, conditions, windows, group-by, thresholds, expected event, or sequence steps as required.
+6. Configure callback URL, trigger mode, and cooldown when using WEBHOOK.
+7. Choose Active for immediate evaluation, or save inactive for review.
+8. Save Rule. Tengen validates the complete combination of fields.
+
+Conditions and Aviator
+----------------------
+The visual builder creates an Aviator expression. Conditions can be grouped with AND and OR. Supported visual-builder operators are:
+- ==
+- !=
+- >
+- >=
+- <
+- <=
+- contains
+- not contains
+
+Common paths include type, source, timestamp, data.amount, data.country, data.currency, data.status, and data.userId. Raw Aviator can reference other fields in the data object.
+
+Example condition:
+
+data.amount >= 1000 && data.country == 'PH'
+
+Raw expressions are validated before save or activation. Default maximum expression length is RULE_MAX_EXPRESSION_LENGTH=10000.
+
+CONDITION RULES
+===============
+
+Use condition rules for a single-event decision: high-value payments, suspicious countries, failed statuses, or an individual security alert.
+
+Example configuration:
+- Name: large-payment
+- Rule type: CONDITION
+- Event type: payment
+- Source: billing
+- Condition: data.amount >= 1000 && data.currency == 'PHP'
+- Action: WEBHOOK or LOG
+
+A condition rule matches only when the event type/source pre-filter and the Aviator condition both pass.
+
+AGGREGATE RULES
+===============
+
+Aggregate functions
+-------------------
+- COUNT: number of matching events; no aggregate field required.
+- SUM: total of a numeric field.
+- AVG: average of a numeric field.
+- MIN: minimum numeric field value.
+- MAX: maximum numeric field value.
+
+How to configure
+----------------
+1. Choose AGGREGATE.
+2. Set event type, source, and optional condition.
+3. Choose the aggregate function.
+4. For SUM, AVG, MIN, or MAX, set a numeric dotted path such as data.amount.
+5. Set a positive event-time window and numeric threshold.
+6. Optionally set groupBy to keep separate values per user, account, device, or order.
+7. Choose the action and trigger mode.
+
+Match semantics
+---------------
+The current event is included in the calculation. The lower time boundary is excluded. The rule matches when aggregateValue >= threshold.
+
+For non-COUNT functions, events whose aggregate field is not numeric are ignored. A grouped aggregate with no usable group key does not produce a grouped match.
+
+Example: five failed logins for one user
+-----------------------------------------
+- Rule type: AGGREGATE
+- Event type: login.failed
+- Source: identity
+- Aggregate: COUNT
+- Window: 300 seconds
+- Threshold: 5
+- Group by: data.userId
+
+SEQUENCE RULES
+==============
+
+Sequence rules detect two to five ordered steps within an event-time window.
+
+How to configure
+----------------
+1. Choose SEQUENCE.
+2. Use two to five steps and reorder them as needed.
+3. For each step, set event type, source, and condition.
+4. Set a positive sequence window.
+5. Optionally set one shared groupBy path. Every step must resolve to the same value for correlation.
+6. Choose LOG or WEBHOOK.
+
+Important behavior
+------------------
+- Steps are evaluated in order.
+- An event cannot skip the expected next step.
+- One event advances at most one sequence instance.
+- Progress is durable and isolated by rule revision and optional group key.
+- On completion, results include matched step IDs and times.
+- Sequence webhook rules use EVERY_MATCH. EDGE and ONCE_PER_WINDOW are not available for sequence rules.
+
+Example order workflow
+----------------------
+1. order.created from checkout, condition data.orderId != nil
+2. payment.completed from billing, condition data.status == 'paid'
+3. shipment.created from fulfillment, condition data.orderId != nil
+Use data.orderId as the shared group-by path.
+
+ABSENCE RULES
+=============
+
+Absence rules detect a missing expected event.
+
+How it works
+------------
+1. A starting event matches its type, source, and condition.
+2. Tengen opens a pending expectation for the configured window.
+3. An expected event satisfies the pending instance if type, source, condition, timing, and group key match.
+4. If the deadline closes without satisfaction, the absence instance triggers and can create a webhook.
+
+How to configure
+----------------
+- Start event type and source.
+- Start condition.
+- Positive absence window in seconds.
+- Optional groupBy path.
+- Expected event type and source.
+- Expected event condition.
+
+Absence behavior
+----------------
+- Expected events must arrive in order and within the window.
+- Grouped absence requires the same group key.
+- Deadline evaluation is handled by the background absence worker.
+- Absence webhook trigger mode is always EVERY_MATCH.
+- Use cooldown to reduce repeated delivery when needed.
+
+TESTING RULES
+=============
+
+Run Test is side-effect-free.
+
+Single rule test
+----------------
+- Select one saved rule and provide an event JSON document.
+- For a sequence, provide one event JSON document per configured step in order.
+- For an absence rule, provide the starting event and optionally an expected event. Leave the expected event blank to simulate a trigger.
+- Aggregate tests may read persisted events in the window, but the sample event is not saved.
+
+All active rules test
+---------------------
+- Evaluates the sample against every active, non-archived rule.
+- Shows per-rule condition, aggregate, sequence, and match outcomes.
+
+Testing never changes live trigger state, watermarks, absence state, sequence progress, event history, or webhook deliveries.
+
+RULE LIFECYCLE AND REVISIONS
+============================
+
+Lifecycle operations
+--------------------
+- Create: creates revision 1 after validation.
+- Update: creates a new immutable revision.
+- Activate: only valid, non-archived rules can be activated.
+- Deactivate: stops live evaluation without deleting the rule or history.
+- Archive: the delete operation archives and deactivates the rule; it does not physically delete history.
+- Unarchive: makes an archived rule available again; it remains inactive until activated.
+- Restore: copies an older snapshot into a new revision and starts it inactive.
+
+Runtime reset behavior
+----------------------
+Updating, activating, deactivating, archiving, unarchiving, or restoring a rule clears action cooldown/window state and cancels active sequence or pending absence instances for that rule. A new configuration does not inherit progress from an older revision.
+
+Concurrency
+-----------
+Rule responses include an ETag containing the current revision. API clients can send If-Match on mutations so a stale client cannot overwrite a newer change.
+
+WEBHOOK ACTIONS
+===============
+
+Delivery model
+--------------
+Webhook actions are asynchronous. Tengen commits the event and delivery intent to a durable outbox before the worker makes the outbound request. Delivery is at least once, so receivers must deduplicate.
+
+Configuration
+-------------
+1. Set action to WEBHOOK.
+2. Enter an HTTPS callback URL using a public host/address.
+3. Choose an allowed trigger mode.
+4. Optionally set cooldownSeconds.
+5. Save and activate the rule.
+
+Trigger modes
+-------------
+- EVERY_MATCH: all rule types; queues one logical webhook for each eligible match.
+- EDGE: CONDITION and AGGREGATE only; queues when the rule changes from non-match to match. A later non-match resets the edge.
+- ONCE_PER_WINDOW: AGGREGATE only; reserves at most one webhook per fixed event-time window and group. A failed delivery can retry.
+- Cooldown: suppresses repeated delivery for a configured period per group or globally. It suppresses delivery, not rule matching.
+- SEQUENCE and ABSENCE webhook rules use EVERY_MATCH.
+
+Callback URL restrictions
+-------------------------
+The URL must:
+- use https://;
+- contain a host;
+- contain no embedded username/password;
+- contain no fragment;
+- resolve to a public address;
+- not resolve to localhost, loopback, private, link-local, multicast, metadata-service, documentation, or other reserved ranges;
+- be reachable without redirects, because the client does not follow redirects.
+
+For local development, use a public HTTPS tunnel or disable the worker. http://localhost callbacks are rejected intentionally.
+
+Delivery payload
+----------------
+Each delivery is a JSON document containing the original event and rule evaluation details. Aggregate matches can appear under aggregates, completed sequences under sequences, and absence triggers under absences with start event, expected event, deadline, group, and triggering watermark.
+
+Signed headers
+--------------
+- X-Tengen-Delivery-Id: stable outbox delivery ID; use it for receiver-side deduplication.
+- X-Tengen-Timestamp: Unix epoch seconds used for signing.
+- X-Tengen-Signature: v1= followed by hexadecimal HMAC-SHA256.
+
+Signature calculation:
+
+message = X-Tengen-Timestamp + "." + raw_request_body
+signature = HMAC_SHA256_HEX(WEBHOOK_SIGNING_SECRET, message)
+expected = "v1=" + signature
+
+Verify against the raw request body before parsing or reserializing JSON.
+
+Delivery lifecycle and retries
+------------------------------
+- PENDING -> PROCESSING -> DELIVERED
+- PENDING -> PROCESSING -> RETRY_SCHEDULED -> DELIVERED
+- PENDING -> PROCESSING -> RETRY_SCHEDULED -> DEAD_LETTER
+- 2xx responses are successful.
+- Timeouts, connection failures, 408, 429, and 5xx responses are retryable.
+- Permanent failures and exhausted attempts become DEAD_LETTER.
+- Default maximum attempts: 8.
+- Default retry base delay: 5000 ms.
+- Default retry maximum delay: 900000 ms (15 minutes).
+- Use X-Tengen-Delivery-Id to deduplicate receiver-side processing.
+- Deliveries can be inspected and dead-lettered deliveries can be retried from the Deliveries page. Retry reuses the same outbox record.
+
+API KEYS
+========
+
+API keys authenticate producers for HTTP and RabbitMQ ingestion.
+
+Key behavior
+------------
+- Raw key format starts with tg_.
+- The raw value is shown only once after creation.
+- Tengen stores a SHA-256 hash, not the raw secret.
+- A key can scope allowed event types and sources using comma-separated lists.
+- Blank type/source scope means all values for that dimension.
+- A key can request Compact summary or Full details producer responses.
+- Keys can be active, revoked, or expired.
+- Revocation prevents future HTTP or RabbitMQ ingestion.
+- RabbitMQ connector enablement requires an active, non-expired ingestion key.
+
+EVENT EXPLORER
+==============
+
+Use Events to find accepted events and follow their processing trace.
+
+Filters
+-------
+- event ID
+- type
+- source
+- API key ID
+- matched
+- trace available
+- event-time status
+- ingestion origin
+- occurred from/to time range
+- timing/search fields exposed by the console
+
+Event list shows event ID, type, source, origin, match outcome, timing classification, API key, occurred time, and received time. Event detail shows the original payload, event-time handling, matched-rule outcomes, aggregate or sequence details, absence instances, RabbitMQ metadata, and linked webhook deliveries.
+
+Older records created before event tracing may show a legacy or trace-unavailable state.
+
+REPLAY AND BACKFILL
+===================
+
+Replay jobs analyze historical events against an immutable rule revision. They are isolated from live processing.
+
+Replay guarantees
+-----------------
+- Replay never sends webhooks.
+- Replay never changes live rule state, watermarks, event traces, or delivery records.
+- Current replay support is for CONDITION and AGGREGATE revisions.
+- SEQUENCE and ABSENCE revisions are not supported by the current replay MVP.
+- Requested time range is inclusive at the start and exclusive at the end.
+- Maximum range is TENGEN_REPLAY_MAX_RANGE_DAYS, 31 days by default.
+- Materialized output is capped by TENGEN_REPLAY_MAX_MATERIALIZED_OUTPUT_EVENTS, 10000 by default.
+- Aggregate replay reads the preceding warmup window so values at the requested start are meaningful.
+- Optional API-key filtering is available.
+
+Replay statuses
+---------------
+QUEUED, RUNNING, PAUSE_REQUESTED, PAUSED, CANCEL_REQUESTED, COMPLETED, FAILED, CANCELLED.
+
+Replay controls are pause, resume, cancel, and retry failed retryable jobs. Retry resumes from the last committed checkpoint. Control requests use the job version in If-Match.
+
+SETTINGS AND ADMIN SECURITY
+===========================
+
+Console settings
+----------------
+- Theme: light, dark, or system.
+- Accent colors: blue, indigo, purple, teal, green, orange, yellow, red, pink, grey, black, or neon.
+- Time display: local time or UTC.
+- Reset restores light theme, blue accent, and local time.
+
+Administrator sessions
+----------------------
+- Login exchanges admin credentials for access and refresh JWTs.
+- The Next.js console stores tokens in httpOnly cookies.
+- Browser JavaScript does not read the tokens.
+- Access token default lifetime is 15 minutes.
+- Refresh session default lifetime is 7 days.
+- Refresh sessions rotate and are revoked on replay or logout.
+- Login throttling defaults to 5 attempts per 60 seconds, controlled by LOGIN_MAX_ATTEMPTS and LOGIN_WINDOW_SECONDS.
+- Direct backend admin calls use Authorization: Bearer <access-token>.
+- Event ingestion uses X-API-Key, not the admin JWT.
+
+CONFIGURATION REFERENCE
+=======================
+
+Core application and security
+-----------------------------
+- SPRING_PROFILES_ACTIVE: empty by default; use prod or production for production checks.
+- DB_URL / DB_USER / DB_PASSWORD: PostgreSQL connection; local defaults use tengen credentials.
+- ADMIN_USER / ADMIN_PASSWORD: initial admin credentials; local default admin / admin.
+- JWT_SECRET: JWT signing secret; use a random value of at least 32 bytes in production.
+- JWT_ISSUER / JWT_AUDIENCE: tengen / tengen-admin by default.
+- JWT_ACCESS_TTL_MINUTES / JWT_REFRESH_TTL_DAYS: 15 / 7 by default.
+- CORS_ALLOWED_ORIGINS: http://localhost:3000 by default.
+- REFRESH_REPLAY_GRACE_SECONDS: 2 by default.
+
+Ingestion and rule safety
+--------------------------
+- RULE_MAX_EXPRESSION_LENGTH=10000
+- INGESTION_MAX_BODY_BYTES=1048576
+- INGESTION_RATE_LIMIT_PER_MINUTE=600
+- INGESTION_MAX_FUTURE_SKEW_SECONDS=300
+- INGESTION_ALLOWED_LATENESS_SECONDS=300
+
+Webhook worker
+--------------
+- WEBHOOK_WORKER_ENABLED=true
+- WEBHOOK_WORKER_POLL_INTERVAL_MS=1000
+- WEBHOOK_WORKER_INITIAL_DELAY_MS=1000
+- WEBHOOK_WORKER_BATCH_SIZE=25
+- WEBHOOK_WORKER_MAX_ATTEMPTS=8
+- WEBHOOK_WORKER_BASE_DELAY_MS=5000
+- WEBHOOK_WORKER_MAX_DELAY_MS=900000
+- WEBHOOK_WORKER_LEASE_DURATION_MS=300000
+- WEBHOOK_WORKER_CONNECT_TIMEOUT_MS=3000
+- WEBHOOK_WORKER_READ_TIMEOUT_MS=5000
+- WEBHOOK_SIGNING_SECRET: development fallback; must be at least 32 characters in production.
+
+RabbitMQ connector
+------------------
+- TENGEN_CONNECTOR_MASTER_KEY: base64-encoded random 32-byte AES-256-GCM key for broker password encryption; empty by default and required for production use.
+- TENGEN_RABBITMQ_ALLOWED_HOSTS: exact comma-separated broker host allowlist; required in production.
+- TENGEN_RABBITMQ_CONNECTION_TIMEOUT_MS / HANDSHAKE_TIMEOUT_MS: 5000 / 5000.
+- TENGEN_RABBITMQ_SHUTDOWN_TIMEOUT_MS / DEAD_LETTER_TIMEOUT_MS: 5000 / 5000.
+- TENGEN_RABBITMQ_CONSUMERS / PREFETCH: 1 / 1.
+
+Replay, absence, retention, and metrics
+----------------------------------------
+- TENGEN_REPLAY_WORKER_ENABLED=true
+- TENGEN_REPLAY_WORKER_POLL_INTERVAL_MS=1000
+- TENGEN_REPLAY_WORKER_INITIAL_DELAY_MS=1000
+- TENGEN_REPLAY_WORKER_BATCH_SIZE=100
+- TENGEN_REPLAY_WORKER_LEASE_DURATION_MS=300000
+- TENGEN_REPLAY_MAX_RANGE_DAYS=31
+- TENGEN_REPLAY_MAX_MATERIALIZED_OUTPUT_EVENTS=10000
+- TENGEN_ABSENCE_WORKER_ENABLED=true
+- TENGEN_ABSENCE_WORKER_POLL_INTERVAL_MS=1000
+- TENGEN_ABSENCE_WORKER_INITIAL_DELAY_MS=1000
+- TENGEN_ABSENCE_WORKER_BATCH_SIZE=100
+- RETENTION_ENABLED=true
+- RETENTION_DAYS=90
+- RETENTION_BATCH_SIZE=1000
+- RETENTION_SCHEDULE=03:15 UTC cron
+- Rule revisions are retained when terminal operational records are cleaned up.
+
+PRODUCTION CHECKLIST
+====================
+
+Minimum values to replace
+-------------------------
+SPRING_PROFILES_ACTIVE=prod
+ADMIN_PASSWORD=replace-with-a-strong-password
+JWT_SECRET=replace-with-a-random-secret-at-least-32-bytes
+WEBHOOK_SIGNING_SECRET=replace-with-another-random-secret
+CORS_ALLOWED_ORIGINS=https://your-console.example
+
+When RabbitMQ is used, also configure TENGEN_CONNECTOR_MASTER_KEY and an exact TENGEN_RABBITMQ_ALLOWED_HOSTS list.
+
+Build and start
+---------------
+docker compose --env-file .env -f tengen/docker-compose.yml up --build -d
+
+Add --profile rabbitmq when RabbitMQ should start with the stack.
+
+Health and metrics
+------------------
+- GET /actuator/health/liveness: public liveness probe.
+- GET /actuator/health/readiness: public readiness probe.
+- GET /actuator/health: authenticated health details.
+- GET /actuator/prometheus: authenticated Prometheus metrics.
+- Metrics cover ingestion, event-time status, rule evaluation errors, webhook attempts, RabbitMQ messages, absence instances, replay jobs, and control operations.
+- Flyway owns schema migrations; Hibernate validates the resulting schema.
+- Back up PostgreSQL before starting a version that introduces migrations.
+
+API REFERENCE
+=============
+
+Use this section when a developer specifically asks for endpoints or wants to automate a console action. The backend listens locally on http://localhost:8080. Direct admin requests use Authorization: Bearer <access-token>. The frontend also has its own Next.js proxy routes; do not confuse those with direct backend routes.
+
+Authentication endpoints
+------------------------
+- POST /api/auth/login - public; exchange admin credentials for accessToken and refreshToken.
+- POST /api/auth/refresh - public; rotate a refresh session and issue a new token pair.
+- POST /api/auth/logout - public; revoke a refresh session.
+
+Get an admin access token:
+
+curl -sS -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin"}'
+
+Event ingestion
+---------------
+- POST /api/events - X-API-Key required; validate, persist, evaluate, and report one event. Supports Idempotency-Key.
+
+Rules and tests
+---------------
+- GET /api/rules - admin JWT; list non-archived rules. Add includeArchived=true for all.
+- GET /api/rules/{id} - admin JWT; read a rule and current revision ETag.
+- POST /api/rules - admin JWT; create and validate a rule.
+- PUT /api/rules/{id} - admin JWT; update a rule and optionally protect with If-Match.
+- DELETE /api/rules/{id} - admin JWT; archive a rule without physically deleting history.
+- PATCH /api/rules/{id}/toggle - admin JWT; activate or deactivate a rule.
+- POST /api/rules/{id}/unarchive - admin JWT; unarchive a rule; it remains inactive until activated.
+- GET /api/rules/{id}/revisions - admin JWT; list immutable revisions.
+- GET /api/rules/{id}/revisions/{revision} - admin JWT; read a revision snapshot.
+- POST /api/rules/{id}/revisions/{revision}/restore - admin JWT; restore a snapshot as a new inactive revision.
+- POST /api/rules/test - admin JWT; run a side-effect-free single-rule or all-active-rules simulation.
+
+API keys
+--------
+- GET /api/keys - admin JWT; list key metadata; raw secrets are not returned.
+- POST /api/keys - admin JWT; create a scoped producer key and return its raw value once.
+- POST /api/keys/{id}/revoke - admin JWT; revoke a producer key.
+
+Event Explorer
+--------------
+- GET /api/event-history - admin JWT; search and paginate accepted event summaries.
+- GET /api/event-history/{id} - admin JWT; read payload, outcomes, timing, origin, and linked deliveries.
+
+Webhook delivery administration
+-------------------------------
+- GET /api/webhook-deliveries - admin JWT; search by status, rule, event, time, or text.
+- GET /api/webhook-deliveries/{id} - admin JWT; read one delivery detail.
+- POST /api/webhook-deliveries/{id}/retry - admin JWT; retry one dead-lettered delivery.
+
+Replay jobs
+-----------
+- POST /api/replay-jobs - admin JWT; create an analysis-only replay job.
+- GET /api/replay-jobs - admin JWT; list and filter replay jobs.
+- GET /api/replay-jobs/{id} - admin JWT; read job status and progress.
+- GET /api/replay-jobs/{id}/transitions - admin JWT; read lifecycle transition audit.
+- GET /api/replay-jobs/{id}/outcomes - admin JWT; read paginated outcomes; filter by matched.
+- POST /api/replay-jobs/{id}/pause - admin JWT; pause or request pause using If-Match.
+- POST /api/replay-jobs/{id}/resume - admin JWT; resume a paused job.
+- POST /api/replay-jobs/{id}/cancel - admin JWT; cancel a queued, running, paused, or failed job.
+- POST /api/replay-jobs/{id}/retry - admin JWT; retry a failed retryable job from its checkpoint.
+
+RabbitMQ connector
+------------------
+- GET /api/connectors/rabbitmq - admin JWT; read configuration and runtime status.
+- PUT /api/connectors/rabbitmq - admin JWT; save a connector draft; supports configuration version or If-Match.
+- POST /api/connectors/rabbitmq/test - admin JWT; test the current saved connection and topology.
+- POST /api/connectors/rabbitmq/enable - admin JWT; start the consumer after a successful current-version test.
+- POST /api/connectors/rabbitmq/disable - admin JWT; stop consumption while retaining saved configuration.
+
+Console settings
+----------------
+- GET /api/settings - admin JWT; read persisted theme, accent, and time-display preferences.
+- PUT /api/settings - admin JWT; update console preferences.
+
+Actuator
+--------
+- GET /actuator/health/liveness - public liveness probe.
+- GET /actuator/health/readiness - public readiness probe.
+- GET /actuator/health - admin JWT; authenticated health details.
+- GET /actuator/prometheus - admin JWT; Prometheus metrics.
+
+List parameters
+---------------
+- /api/rules: includeArchived, default false.
+- Revision, delivery, replay, and outcome lists: page, default 0; size, default 25; each endpoint validates its maximum.
+- /api/event-history: eventId, type, source, apiKeyId, matched, traceAvailable, eventTimeStatus, ingestionOrigin or origin, from, to.
+- /api/webhook-deliveries: status, ruleId, eventId, from, to, search.
+- /api/replay-jobs: status, ruleId, ruleRevision, createdBy, jobId, from, to.
+- /api/replay-jobs/{id}/outcomes: matched for matched-only or no-match-only results.
+
+Rule creation request shape
+---------------------------
+The backend rule request supports these fields:
+- name
+- ruleType
+- action
+- callbackUrl
+- cooldownSeconds
+- triggerMode
+- eventType
+- source
+- conditionScript
+- expectedEventType
+- expectedSource
+- expectedConditionScript
+- windowSeconds
+- aggType
+- aggField
+- groupBy
+- threshold
+- active
+- sequenceSteps
+
+Example condition rule through the API:
+
+curl -sS -X POST http://localhost:8080/api/rules \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "large-payment",
+    "ruleType": "CONDITION",
+    "action": "LOG",
+    "eventType": "payment",
+    "source": "billing",
+    "conditionScript": "data.amount >= 1000",
+    "threshold": 0,
+    "active": true,
+    "sequenceSteps": []
+  }'
+
+For aggregate, sequence, absence, or webhook rules, add the fields required by those rule types. The backend validates the field combination before saving or activating the rule.
+
+TROUBLESHOOTING DECISION GUIDE
+==============================
+
+Event was rejected over HTTP
+----------------------------
+1. Check X-API-Key and whether the key is active and not expired.
+2. Check API-key type/source scope.
+3. Check JSON envelope: type and source are present, data is an object.
+4. Check body size and per-minute rate limit.
+5. Check that timestamp is not too far in the future.
+6. If reusing an Idempotency-Key, confirm the payload is identical.
+
+Event was accepted but did not match
+------------------------------------
+1. Check eventTimeStatus. TOO_LATE events are persisted but do not evaluate live rules.
+2. Check exact event type and source.
+3. Check the Aviator condition and dotted data paths.
+4. Check that the rule is active, valid, and not archived.
+5. For aggregate, check current event inclusion, threshold, numeric field, window, and group key.
+6. For sequence, check step order, shared group key, and window.
+7. For absence, check whether the expected event satisfied the pending instance before its deadline.
+
+Rule matched but no webhook arrived
+-----------------------------------
+1. Confirm the rule action is WEBHOOK.
+2. Check queuedRules versus suppressedRules in the producer response.
+3. Check trigger mode and cooldown. Cooldown suppresses delivery, not matching.
+4. Check Deliveries for PENDING, RETRY_SCHEDULED, DEAD_LETTER, or error details.
+5. Confirm the callback is public HTTPS, has no redirect, and is not a reserved/private address.
+6. Confirm WEBHOOK_WORKER_ENABLED is true and the signing secret is configured.
+
+RabbitMQ connector cannot enable
+-------------------------------
+1. Save a draft and run Test connection for the current configuration version.
+2. Check broker host, port, virtual host, credentials, and TLS.
+3. Confirm the input queue and dead-letter exchange already exist.
+4. Confirm the ingestion API key is active and its scopes cover messages.
+5. Confirm TENGEN_RABBITMQ_ALLOWED_HOSTS permits the exact broker hostname in production.
+6. Confirm TENGEN_CONNECTOR_MASTER_KEY is a valid base64-encoded random 32-byte key when encryption is required.
+
+Replay does not show expected results
+-------------------------------------
+1. Confirm the selected rule revision is CONDITION or AGGREGATE; SEQUENCE and ABSENCE are not supported by the current replay MVP.
+2. Check the inclusive start and exclusive end range.
+3. Check that the event occurred time falls in the range.
+4. For aggregates, remember the worker uses a warmup window before the requested start.
+5. Inspect job status, transitions, errors, and outcomes.
+
+GLOSSARY
+========
+
+- Event: JSON business fact submitted through HTTP or RabbitMQ.
+- Event envelope: type, source, optional timestamp, and data object.
+- Rule: validated configuration that evaluates events and optionally creates an action.
+- Rule revision: immutable version of a rule configuration.
+- Condition: one-event Aviator expression.
+- Aggregate: calculation over a moving event-time window.
+- Sequence: ordered two-to-five-step event pattern.
+- Absence: a missing expected event after a matching start event.
+- Watermark: durable stream progress used to classify event-time lateness.
+- ON_TIME: event evaluated normally at current stream progress.
+- LATE_ACCEPTED: older event inside the allowed lateness period; still evaluated.
+- TOO_LATE: persisted event outside the lateness boundary; not evaluated live.
+- Trigger mode: delivery policy EVERY_MATCH, EDGE, or ONCE_PER_WINDOW.
+- Cooldown: delivery suppression interval; it does not change rule matching.
+- Outbox: durable store of webhook delivery intents.
+- Dead letter: terminal route/state for permanently invalid or exhausted messages/deliveries.
+- Replay: analysis-only historical evaluation against an immutable rule revision.
+- Producer API key: credential for event ingestion; distinct from admin JWT.
+- Event trace: persisted link between an accepted event, rule outcomes, and deliveries.
+
+END OF TENGEN LLM REFERENCE

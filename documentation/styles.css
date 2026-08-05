@@ -346,19 +346,15 @@ img {
 }
 
 .hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
-  gap: 48px;
-  align-items: center;
-  min-height: 470px;
-  padding: 38px 0 74px;
+  max-width: 850px;
+  padding: 30px 0 36px;
 }
 
 .eyebrow {
   margin: 0 0 12px;
   color: var(--blue);
   font-size: 0.71rem;
-  font-weight: 850;
+  font-weight: 700;
   letter-spacing: 0.16em;
   line-height: 1.4;
   text-transform: uppercase;
@@ -375,26 +371,30 @@ h4 {
 }
 
 h1 {
-  max-width: 760px;
-  margin-bottom: 22px;
-  font-size: clamp(2.8rem, 6vw, 5.5rem);
-  font-weight: 780;
+  max-width: 720px;
+  margin-bottom: 16px;
+  font-size: clamp(2rem, 4vw, 3.25rem);
+  font-weight: 650;
+  letter-spacing: -0.025em;
 }
 
 h2 {
-  margin-bottom: 13px;
-  font-size: clamp(2rem, 3.6vw, 3.25rem);
-  font-weight: 760;
+  margin-bottom: 10px;
+  font-size: clamp(1.65rem, 2.7vw, 2.25rem);
+  font-weight: 650;
+  letter-spacing: -0.02em;
 }
 
 h3 {
-  margin: 30px 0 12px;
-  font-size: 1.25rem;
+  margin: 26px 0 10px;
+  font-size: 1.12rem;
+  font-weight: 650;
 }
 
 h4 {
   margin: 22px 0 8px;
   font-size: 0.98rem;
+  font-weight: 650;
   letter-spacing: -0.02em;
 }
 
@@ -405,7 +405,7 @@ p {
 .hero-lede {
   max-width: 680px;
   color: var(--ink-soft);
-  font-size: 1.08rem;
+  font-size: 1rem;
 }
 
 .hero-actions {
@@ -424,18 +424,16 @@ p {
   border: 1px solid transparent;
   border-radius: 8px;
   font-size: 0.84rem;
-  font-weight: 750;
-  transition: transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+  font-weight: 600;
+  transition: background 0.16s ease, border-color 0.16s ease;
 }
 
 .button:hover {
   text-decoration: none;
-  transform: translateY(-1px);
 }
 
 .button-primary {
   background: var(--navy);
-  box-shadow: 0 7px 18px rgba(11, 31, 58, 0.18);
   color: #ffffff;
 }
 
@@ -448,90 +446,6 @@ p {
   background: var(--surface);
   color: var(--ink);
 }
-
-.hero-panel {
-  position: relative;
-  overflow: hidden;
-  padding: 28px;
-  border: 1px solid rgba(116, 168, 218, 0.28);
-  border-radius: 22px;
-  background: linear-gradient(150deg, #0b1f3a 0%, #123962 62%, #1b5682 100%);
-  box-shadow: 0 30px 60px rgba(11, 31, 58, 0.22);
-  color: #f4f9ff;
-}
-
-.hero-panel::after {
-  position: absolute;
-  right: -62px;
-  bottom: -74px;
-  width: 220px;
-  height: 220px;
-  border: 1px solid rgba(255, 255, 255, 0.17);
-  border-radius: 50%;
-  box-shadow: 0 0 0 24px rgba(255, 255, 255, 0.04), 0 0 0 48px rgba(255, 255, 255, 0.03);
-  content: "";
-}
-
-.hero-panel-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #bed8ef;
-  font-size: 0.76rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #67e6a8;
-  box-shadow: 0 0 0 5px rgba(103, 230, 168, 0.13);
-}
-
-.hero-stat-grid {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-  margin: 46px 0 38px;
-}
-
-.hero-stat-grid div {
-  display: grid;
-  gap: 2px;
-  padding-top: 13px;
-  border-top: 1px solid rgba(255, 255, 255, 0.18);
-}
-
-.hero-stat-grid strong {
-  font-size: 1.85rem;
-  letter-spacing: -0.06em;
-}
-
-.hero-stat-grid span {
-  color: #bcd1e5;
-  font-size: 0.72rem;
-}
-
-.hero-code-line {
-  position: relative;
-  z-index: 1;
-  padding: 13px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 8px;
-  background: rgba(4, 13, 26, 0.25);
-  color: #c9e2f7;
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 0.72rem;
-}
-
-.code-key { color: #82c2ff; }
-.code-value { color: #8be9b1; }
-.code-punc { color: #a8bbd0; }
 
 .notice {
   display: flex;
@@ -1215,11 +1129,6 @@ pre {
     --sidebar-width: 252px;
   }
 
-  .hero {
-    grid-template-columns: minmax(0, 1fr) minmax(250px, 0.72fr);
-    gap: 28px;
-  }
-
   .feature-map {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -1292,13 +1201,7 @@ pre {
   }
 
   .hero {
-    grid-template-columns: 1fr;
-    min-height: 0;
-    padding-top: 34px;
-  }
-
-  .hero-panel {
-    max-width: 560px;
+    padding-top: 28px;
   }
 }
 
@@ -1318,11 +1221,11 @@ pre {
   }
 
   h1 {
-    font-size: clamp(2.55rem, 13vw, 4rem);
+    font-size: clamp(2rem, 10vw, 3rem);
   }
 
   h2 {
-    font-size: 2rem;
+    font-size: 1.8rem;
   }
 
   .doc-section {
@@ -1365,14 +1268,6 @@ pre {
 
   .operator-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .hero-stat-grid {
-    margin: 34px 0 28px;
-  }
-
-  .hero-panel {
-    padding: 22px;
   }
 
   .site-footer {
