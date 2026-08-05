@@ -25,6 +25,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <html lang="en">
+      <head>
+        <meta name="robots" content="noindex, nofollow, noarchive" />
+        <meta name="googlebot" content="noindex, nofollow, noarchive" />
+      </head>
       <body>
         <Providers>
           <AuthProvider>
