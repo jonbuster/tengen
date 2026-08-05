@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { RuleForm } from "./RuleForm";
 import { Rule } from "@/lib/types";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const rule: Rule = {
   id: 1,
@@ -34,9 +35,16 @@ const rule: Rule = {
 };
 
 describe("RuleForm", () => {
+  function renderForm(element: React.ReactElement) {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    return render(<QueryClientProvider client={queryClient}>{element}</QueryClientProvider>);
+  }
+
   it("synchronizes visual and raw condition modes", async () => {
     const user = userEvent.setup();
-    render(<RuleForm initial={rule} onSubmit={vi.fn()} />);
+    renderForm(<RuleForm initial={rule} onSubmit={vi.fn()} />);
 
     const rawButton = screen.getByRole("button", { name: "Raw Aviator" });
     await user.click(rawButton);
@@ -65,7 +73,7 @@ describe("RuleForm", () => {
         { position: 2, eventType: "approved", source: "workflow", conditionScript: "(true == true)" },
       ],
     };
-    render(<RuleForm initial={sequenceRule} onSubmit={vi.fn()} />);
+    renderForm(<RuleForm initial={sequenceRule} onSubmit={vi.fn()} />);
 
     expect(screen.getByText("Step 1")).toBeInTheDocument();
     expect(screen.getByText("Step 2")).toBeInTheDocument();

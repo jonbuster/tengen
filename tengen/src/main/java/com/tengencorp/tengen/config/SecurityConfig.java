@@ -65,7 +65,8 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/prometheus").authenticated()
                 .requestMatchers("/api/rules/**", "/api/keys/**", "/api/webhook-deliveries/**",
                     "/api/event-history/**", "/api/replay-jobs/**", "/api/settings",
-                    "/api/connectors/rabbitmq/**").authenticated()
+                    "/api/connectors/rabbitmq/**", "/api/notification-destinations/**",
+                    "/api/notification-templates/**").authenticated()
                 .requestMatchers("/api/events").authenticated()
                 .anyRequest().denyAll())
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)

@@ -1,5 +1,7 @@
 export type RuleType = "CONDITION" | "AGGREGATE" | "SEQUENCE" | "ABSENCE";
-export type RuleAction = "LOG" | "WEBHOOK";
+export type RuleAction = "LOG" | "WEBHOOK" | "EMAIL" | "SMS";
+export type NotificationChannel = "EMAIL" | "SMS";
+export type NotificationRecipientMode = "FIXED" | "EVENT_FIELD";
 export type AggregateType = "COUNT" | "SUM" | "AVG" | "MIN" | "MAX";
 export type TriggerMode = "EVERY_MATCH" | "EDGE" | "ONCE_PER_WINDOW";
 export type RuleValidationStatus = "VALID" | "INVALID";
@@ -28,6 +30,11 @@ export interface Rule {
   ruleType: RuleType;
   action: RuleAction;
   callbackUrl: string | null;
+  notificationDestinationId?: number | null;
+  notificationTemplateId?: number | null;
+  notificationRecipientMode?: NotificationRecipientMode | null;
+  notificationRecipients?: string[];
+  notificationRecipientField?: string | null;
   cooldownSeconds: number | null;
   triggerMode: TriggerMode;
   eventType: string | null;
@@ -75,6 +82,11 @@ export interface RuleSnapshot {
   ruleType: RuleType;
   action: RuleAction;
   callbackUrl: string | null;
+  notificationDestinationId?: number | null;
+  notificationTemplateId?: number | null;
+  notificationRecipientMode?: NotificationRecipientMode | null;
+  notificationRecipients?: string[];
+  notificationRecipientField?: string | null;
   cooldownSeconds: number | null;
   triggerMode: TriggerMode;
   eventType: string | null;
@@ -210,6 +222,11 @@ export interface RuleRequest {
   ruleType: RuleType;
   action: RuleAction;
   callbackUrl?: string | null;
+  notificationDestinationId?: number | null;
+  notificationTemplateId?: number | null;
+  notificationRecipientMode?: NotificationRecipientMode | null;
+  notificationRecipients?: string[];
+  notificationRecipientField?: string | null;
   cooldownSeconds?: number | null;
   triggerMode?: TriggerMode | null;
   eventType?: string | null;
@@ -376,7 +393,70 @@ export interface WebhookDeliveryDetail {
   leaseExpiresAt: string | null;
 }
 
-export type EventRuleActionOutcome = "LOG_ONLY" | "WEBHOOK_QUEUED" | "WEBHOOK_SUPPRESSED";
+export type EventRuleActionOutcome =
+  | "LOG_ONLY"
+  | "WEBHOOK_QUEUED"
+  | "WEBHOOK_SUPPRESSED"
+  | "EMAIL_QUEUED"
+  | "EMAIL_SUPPRESSED"
+  | "EMAIL_FAILED"
+  | "SMS_QUEUED"
+  | "SMS_SUPPRESSED"
+  | "SMS_FAILED";
+
+export interface NotificationDestination {
+  id: number;
+  displayName: string;
+  channel: NotificationChannel;
+  provider: string;
+  configuration: Record<string, unknown>;
+  credentialConfigured: boolean;
+  enabled: boolean;
+  lastTestedAt: string | null;
+  lastTestSucceeded: boolean | null;
+  lastTestErrorCategory: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NotificationDestinationRequest {
+  displayName: string;
+  channel: NotificationChannel;
+  provider: string;
+  configuration: Record<string, unknown>;
+  credentials: Record<string, string>;
+  enabled: boolean;
+}
+
+export interface NotificationConnectionTestResult {
+  successful: boolean;
+  category: string;
+  message: string;
+  testedAt: string;
+}
+
+export interface NotificationTemplate {
+  id: number;
+  name: string;
+  channel: NotificationChannel;
+  version: number;
+  subjectTemplate: string | null;
+  textTemplate: string;
+  htmlTemplate: string | null;
+  cssTemplate: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NotificationTemplateRequest {
+  name: string;
+  channel: NotificationChannel;
+  subjectTemplate?: string | null;
+  textTemplate: string;
+  htmlTemplate?: string | null;
+  cssTemplate?: string | null;
+}
 
 export interface EventHistorySummary {
   id: number;

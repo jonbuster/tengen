@@ -1,6 +1,8 @@
 package com.tengencorp.tengen.config;
 
 import com.tengencorp.tengen.entity.WebhookOutboxStatus;
+import com.tengencorp.tengen.entity.NotificationOutboxStatus;
+import com.tengencorp.tengen.repository.NotificationOutboxRepository;
 import com.tengencorp.tengen.repository.WebhookOutboxRepository;
 import com.tengencorp.tengen.service.RabbitMqRuntimeManager;
 import io.micrometer.core.instrument.Gauge;
@@ -19,8 +21,13 @@ public class OperationalMetrics {
         WebhookOutboxStatus.PENDING,
         WebhookOutboxStatus.PROCESSING,
         WebhookOutboxStatus.RETRY_SCHEDULED);
+    private static final List<NotificationOutboxStatus> ACTIVE_NOTIFICATIONS = List.of(
+        NotificationOutboxStatus.PENDING,
+        NotificationOutboxStatus.PROCESSING,
+        NotificationOutboxStatus.RETRY_SCHEDULED);
 
     public OperationalMetrics(MeterRegistry registry, WebhookOutboxRepository repository,
+                              NotificationOutboxRepository notificationOutboxRepository,
                               RabbitMqRuntimeManager rabbitMqRuntimeManager) {
         Gauge.builder("tengen.webhook.queue.depth", repository,
                 value -> value.countByStatusIn(ACTIVE))
@@ -31,6 +38,16 @@ public class OperationalMetrics {
                     .map(row -> Math.max(0, Duration.between(row.getCreatedAt(), Instant.now()).toSeconds()))
                     .orElse(0L))
             .description("Age of the oldest active webhook delivery")
+            .register(registry);
+        Gauge.builder("tengen.notification.queue.depth", notificationOutboxRepository,
+                value -> value.countByStatusIn(ACTIVE_NOTIFICATIONS))
+            .description("Active email and SMS notifications")
+            .register(registry);
+        Gauge.builder("tengen.notification.queue.oldest.age.seconds", notificationOutboxRepository,
+                value -> value.findFirstByStatusInOrderByCreatedAtAsc(ACTIVE_NOTIFICATIONS)
+                    .map(row -> Math.max(0, Duration.between(row.getCreatedAt(), Instant.now()).toSeconds()))
+                    .orElse(0L))
+            .description("Age of the oldest active email or SMS notification")
             .register(registry);
         Gauge.builder("tengen.rabbitmq.listener.running", rabbitMqRuntimeManager,
                 manager -> manager.isRunning() ? 1 : 0)

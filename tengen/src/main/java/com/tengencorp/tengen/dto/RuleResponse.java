@@ -3,6 +3,7 @@ package com.tengencorp.tengen.dto;
 import com.tengencorp.tengen.entity.AggregateType;
 import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.entity.RuleAction;
+import com.tengencorp.tengen.entity.NotificationRecipientMode;
 import com.tengencorp.tengen.entity.RuleType;
 import com.tengencorp.tengen.entity.TriggerMode;
 import com.tengencorp.tengen.entity.RuleValidationStatus;
@@ -19,6 +20,11 @@ public record RuleResponse(
         RuleType ruleType,
         RuleAction action,
         String callbackUrl,
+        Long notificationDestinationId,
+        Long notificationTemplateId,
+        NotificationRecipientMode notificationRecipientMode,
+        List<String> notificationRecipients,
+        String notificationRecipientField,
         Integer cooldownSeconds,
         TriggerMode triggerMode,
         String eventType,
@@ -48,6 +54,11 @@ public record RuleResponse(
             rule.getRuleType(),
             rule.getAction(),
             rule.getCallbackUrl(),
+            rule.getNotificationDestinationId(),
+            rule.getNotificationTemplateId(),
+            rule.getNotificationRecipientMode(),
+            rule.getNotificationRecipients() != null ? List.copyOf(rule.getNotificationRecipients()) : List.of(),
+            rule.getNotificationRecipientField(),
             rule.getCooldownSeconds(),
             rule.getEffectiveTriggerMode(),
             rule.getEventType(),

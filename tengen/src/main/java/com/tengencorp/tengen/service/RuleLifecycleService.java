@@ -324,6 +324,12 @@ public class RuleLifecycleService {
         rule.setRuleType(snapshot.ruleType());
         rule.setAction(snapshot.action());
         rule.setCallbackUrl(snapshot.callbackUrl());
+        rule.setNotificationDestinationId(snapshot.notificationDestinationId());
+        rule.setNotificationTemplateId(snapshot.notificationTemplateId());
+        rule.setNotificationRecipientMode(snapshot.notificationRecipientMode());
+        rule.setNotificationRecipients(snapshot.notificationRecipients() != null
+            ? new java.util.ArrayList<>(snapshot.notificationRecipients()) : new java.util.ArrayList<>());
+        rule.setNotificationRecipientField(snapshot.notificationRecipientField());
         rule.setCooldownSeconds(snapshot.cooldownSeconds());
         rule.setTriggerMode(snapshot.triggerMode());
         rule.setEventType(snapshot.ruleType() == com.tengencorp.tengen.entity.RuleType.SEQUENCE

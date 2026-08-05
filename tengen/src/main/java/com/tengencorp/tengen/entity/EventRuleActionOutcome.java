@@ -4,5 +4,11 @@ package com.tengencorp.tengen.entity;
 public enum EventRuleActionOutcome {
     LOG_ONLY,
     WEBHOOK_QUEUED,
-    WEBHOOK_SUPPRESSED
+    WEBHOOK_SUPPRESSED,
+    EMAIL_QUEUED,
+    EMAIL_SUPPRESSED,
+    EMAIL_FAILED,
+    SMS_QUEUED,
+    SMS_SUPPRESSED,
+    SMS_FAILED
 }

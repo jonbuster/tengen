@@ -8,10 +8,14 @@ import {
   Button,
   Checkbox,
   FormControlLabel,
+  FormControl,
+  FormHelperText,
   Grid,
   IconButton,
   InputAdornment,
   MenuItem,
+  InputLabel,
+  Select,
   Stack,
   TextField,
   ToggleButton,
@@ -25,6 +29,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { ConditionBuilder } from "@/components/ConditionBuilder";
 import {
@@ -33,10 +38,22 @@ import {
   generateAviator,
   parseAviator,
 } from "@/lib/conditionBuilder";
-import { Rule, RuleAction, RuleRequest, RuleType, SequenceStep, TriggerMode } from "@/lib/types";
+import { api } from "@/lib/api";
+import {
+  NotificationChannel,
+  NotificationDestination,
+  NotificationRecipientMode,
+  NotificationTemplate,
+  Rule,
+  RuleAction,
+  RuleRequest,
+  RuleType,
+  SequenceStep,
+  TriggerMode,
+} from "@/lib/types";
 
 const RULE_TYPES: RuleType[] = ["CONDITION", "AGGREGATE", "SEQUENCE", "ABSENCE"];
-const ACTIONS: RuleAction[] = ["LOG", "WEBHOOK"];
+const ACTIONS: RuleAction[] = ["LOG", "WEBHOOK", "EMAIL", "SMS"];
 const AGG_TYPES = ["COUNT", "SUM", "AVG", "MIN", "MAX"];
 const TRIGGER_MODES: { value: TriggerMode; label: string }[] = [
   { value: "EVERY_MATCH", label: "Every match" },
@@ -149,11 +166,24 @@ function toRequest(
     ruleType,
     action,
     callbackUrl: action === "WEBHOOK" ? values.callbackUrl || null : null,
+    notificationDestinationId: action === "EMAIL" || action === "SMS"
+      ? values.notificationDestinationId ? Number(values.notificationDestinationId) : null : null,
+    notificationTemplateId: action === "EMAIL" || action === "SMS"
+      ? values.notificationTemplateId ? Number(values.notificationTemplateId) : null : null,
+    notificationRecipientMode: action === "EMAIL" || action === "SMS"
+      ? (values.notificationRecipientMode as NotificationRecipientMode) || "FIXED" : null,
+    notificationRecipients: (action === "EMAIL" || action === "SMS")
+      && values.notificationRecipientMode !== "EVENT_FIELD"
+      ? values.notificationRecipients.split(/[\n,]/).map((value) => value.trim()).filter(Boolean) : [],
+    notificationRecipientField: (action === "EMAIL" || action === "SMS")
+      && values.notificationRecipientMode === "EVENT_FIELD"
+      ? values.notificationRecipientField.trim() || null : null,
     cooldownSeconds:
-      action === "WEBHOOK" && values.cooldownSeconds !== ""
+      (action === "WEBHOOK" || action === "EMAIL" || action === "SMS") && values.cooldownSeconds !== ""
         ? Number(values.cooldownSeconds)
         : null,
-    triggerMode: action === "WEBHOOK" ? (values.triggerMode as TriggerMode) : "EVERY_MATCH",
+    triggerMode: action === "WEBHOOK" || action === "EMAIL" || action === "SMS"
+      ? (values.triggerMode as TriggerMode) : "EVERY_MATCH",
     eventType: ruleType === "SEQUENCE" ? null : values.eventType,
     source: ruleType === "SEQUENCE" ? null : values.source,
     conditionScript:
@@ -195,6 +225,11 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
     ruleType: initial?.ruleType ?? "CONDITION",
     action: initial?.action ?? "LOG",
     callbackUrl: initial?.callbackUrl ?? "",
+    notificationDestinationId: initial?.notificationDestinationId?.toString() ?? "",
+    notificationTemplateId: initial?.notificationTemplateId?.toString() ?? "",
+    notificationRecipientMode: initial?.notificationRecipientMode ?? "FIXED",
+    notificationRecipients: (initial?.notificationRecipients ?? []).join(", "),
+    notificationRecipientField: initial?.notificationRecipientField ?? "",
     cooldownSeconds: initial?.cooldownSeconds?.toString() ?? "",
     triggerMode: initial?.triggerMode ?? "EVERY_MATCH",
     eventType: initial?.eventType ?? "",
@@ -302,6 +337,22 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
         return;
       }
     }
+    const isNotificationAction = values.action === "EMAIL" || values.action === "SMS";
+    if (isNotificationAction) {
+      if (!values.notificationDestinationId || !values.notificationTemplateId) {
+        setError("Select a notification destination and template.");
+        return;
+      }
+      if (values.notificationRecipientMode === "EVENT_FIELD") {
+        if (!values.notificationRecipientField.trim()) {
+          setError("Enter a data field path for the notification recipient.");
+          return;
+        }
+      } else if (!values.notificationRecipients.split(/[\n,]/).some((value) => value.trim())) {
+        setError("Enter at least one notification recipient.");
+        return;
+      }
+    }
     try {
       await onSubmit(toRequest(
         values,
@@ -320,6 +371,20 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
   const isSequence = values.ruleType === "SEQUENCE";
   const isAbsence = values.ruleType === "ABSENCE";
   const isWebhook = values.action === "WEBHOOK";
+  const isNotification = values.action === "EMAIL" || values.action === "SMS";
+  const notificationChannel: NotificationChannel | null = values.action === "EMAIL"
+    ? "EMAIL" : values.action === "SMS" ? "SMS" : null;
+  const destinationsQuery = useQuery<NotificationDestination[]>({
+    queryKey: ["notification-destinations", notificationChannel],
+    queryFn: async () => (await api.get(`/notification-destinations?channel=${notificationChannel}`)).data,
+    enabled: notificationChannel !== null,
+  });
+  const templatesQuery = useQuery<NotificationTemplate[]>({
+    queryKey: ["notification-templates", notificationChannel],
+    queryFn: async () => (await api.get(`/notification-templates?channel=${notificationChannel}`)).data,
+    enabled: notificationChannel !== null,
+  });
+  const isExternalAction = isWebhook || isNotification;
   const triggerModes = isSequence || isAbsence
     ? TRIGGER_MODES.filter((mode) => mode.value === "EVERY_MATCH")
     : TRIGGER_MODES;
@@ -348,6 +413,96 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
         {isWebhook && (
           <Grid item xs={12} sm={6}>
             <TextField label="Callback URL" value={values.callbackUrl} onChange={set("callbackUrl")} fullWidth />
+          </Grid>
+        )}
+        {isNotification && notificationChannel && (
+          <Grid item xs={12}>
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>Notification delivery</Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth required>
+                  <InputLabel id="notification-destination-label">Destination</InputLabel>
+                  <Select
+                    labelId="notification-destination-label"
+                    label="Destination"
+                    value={values.notificationDestinationId}
+                    onChange={(event) => setValues((current) => ({
+                      ...current,
+                      notificationDestinationId: String(event.target.value),
+                    }))}
+                  >
+                    {destinationsQuery.data?.map((destination) => (
+                      <MenuItem key={destination.id} value={String(destination.id)}>
+                        {destination.displayName} · {destination.provider}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  <FormHelperText>
+                    {destinationsQuery.isLoading
+                      ? "Loading destinations…"
+                      : "Provider credentials are managed separately from the rule."}
+                  </FormHelperText>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth required>
+                  <InputLabel id="notification-template-label">Template</InputLabel>
+                  <Select
+                    labelId="notification-template-label"
+                    label="Template"
+                    value={values.notificationTemplateId}
+                    onChange={(event) => setValues((current) => ({
+                      ...current,
+                      notificationTemplateId: String(event.target.value),
+                    }))}
+                  >
+                    {templatesQuery.data?.map((template) => (
+                      <MenuItem key={template.id} value={String(template.id)}>
+                        {template.name} · v{template.version}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                  <FormHelperText>Templates are immutable versions.</FormHelperText>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  select
+                  label="Recipient mode"
+                  value={values.notificationRecipientMode}
+                  onChange={set("notificationRecipientMode")}
+                  fullWidth
+                >
+                  <MenuItem value="FIXED">Fixed recipient(s)</MenuItem>
+                  <MenuItem value="EVENT_FIELD">Event data field</MenuItem>
+                </TextField>
+              </Grid>
+              {values.notificationRecipientMode === "EVENT_FIELD" ? (
+                <Grid item xs={12} sm={8}>
+                  <TextField
+                    label={notificationChannel === "EMAIL" ? "Email field" : "Phone field"}
+                    value={values.notificationRecipientField}
+                    onChange={set("notificationRecipientField")}
+                    fullWidth
+                    required
+                    helperText="Example: data.email or data.phone"
+                  />
+                </Grid>
+              ) : (
+                <Grid item xs={12} sm={8}>
+                  <TextField
+                    label={notificationChannel === "EMAIL" ? "Email recipient(s)" : "SMS recipient"}
+                    value={values.notificationRecipients}
+                    onChange={set("notificationRecipients")}
+                    fullWidth
+                    required
+                    helperText={notificationChannel === "EMAIL"
+                      ? "Separate email addresses with commas."
+                      : "Use E.164 format, for example +15551234567."}
+                  />
+                </Grid>
+              )}
+            </Grid>
           </Grid>
         )}
         {!isSequence && (
@@ -393,7 +548,7 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
         </>
       )}
 
-      {isWebhook && (
+      {isExternalAction && (
         <Accordion disableGutters>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Typography>Advanced</Typography>
@@ -409,8 +564,8 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
                   fullWidth
                   helperText={
                     values.triggerMode === "ONCE_PER_WINDOW"
-                      ? "Aggregate webhook rules send once in each fixed event-time window; failed delivery can retry."
-                      : "On rising edge sends a webhook only when the rule changes from not matching to matching."
+                      ? "Aggregate notification rules send once in each fixed event-time window; failed delivery can retry."
+                      : "On rising edge sends only when the rule changes from not matching to matching."
                   }
                 >
                   {triggerModes.map((mode) => (
@@ -429,7 +584,7 @@ export function RuleForm({ initial, onSubmit, submitting }: RuleFormProps) {
                   InputProps={{
                     endAdornment: (
                       <InputAdornment position="end">
-                        <FieldInfo title="Controls repeated webhook delivery, not rule detection. Leave blank or use 0 to disable." />
+                        <FieldInfo title="Controls repeated external delivery, not rule detection. Leave blank or use 0 to disable." />
                       </InputAdornment>
                     ),
                   }}

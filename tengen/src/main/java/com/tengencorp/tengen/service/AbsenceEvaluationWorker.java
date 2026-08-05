@@ -33,6 +33,7 @@ public class AbsenceEvaluationWorker {
     private final EventWatermarkService watermarkService;
     private final WebhookCooldownService cooldownService;
     private final WebhookOutboxService outboxService;
+    private final NotificationOutboxService notificationOutboxService;
     private final EventRuleOutcomeRepository outcomeRepository;
     private final int batchSize;
     private final Counter triggered;
@@ -45,6 +46,7 @@ public class AbsenceEvaluationWorker {
             EventWatermarkService watermarkService,
             WebhookCooldownService cooldownService,
             WebhookOutboxService outboxService,
+            NotificationOutboxService notificationOutboxService,
             EventRuleOutcomeRepository outcomeRepository,
             MeterRegistry meterRegistry,
             @Value("${tengen.absence.worker.batch-size:100}") int batchSize) {
@@ -55,6 +57,7 @@ public class AbsenceEvaluationWorker {
         this.watermarkService = watermarkService;
         this.cooldownService = cooldownService;
         this.outboxService = outboxService;
+        this.notificationOutboxService = notificationOutboxService;
         this.outcomeRepository = outcomeRepository;
         this.batchSize = batchSize;
         this.triggered = meterRegistry.counter("tengen.absence.instances", "result", "triggered");
@@ -139,14 +142,14 @@ public class AbsenceEvaluationWorker {
             action.deliveryId()));
         instance.getStartEvent().recordDelayedProcessingTrace(
             1,
-            action.outcome() == EventRuleActionOutcome.WEBHOOK_QUEUED ? 1 : 0,
-            action.outcome() == EventRuleActionOutcome.WEBHOOK_SUPPRESSED ? 1 : 0);
+            isQueued(action.outcome()) ? 1 : 0,
+            isSuppressed(action.outcome()) ? 1 : 0);
         triggered.increment();
     }
 
     private ActionDecision dispatch(Rule rule, RuleAbsenceInstance instance,
                                     AbsenceResult absence) {
-        if (rule.getAction() != RuleAction.WEBHOOK || rule.getCallbackUrl() == null) {
+        if (!isExternalAction(rule)) {
             return new ActionDecision(EventRuleActionOutcome.LOG_ONLY, null, null);
         }
 
@@ -158,22 +161,72 @@ public class AbsenceEvaluationWorker {
                     || cooldownService.isSuppressed(state, rule.getCooldownSeconds(), Instant.now())) {
                 suppressed.increment();
                 return new ActionDecision(
-                    EventRuleActionOutcome.WEBHOOK_SUPPRESSED,
+                    suppressedOutcome(rule),
                     state.getPendingOutboxId() != null
                         ? "COOLDOWN_ACTIVE_OR_RESERVED" : "COOLDOWN_ACTIVE",
                     null);
             }
         }
 
-        var enqueue = outboxService.enqueueAbsence(rule, instance.getStartEvent(), absence);
-        if (state != null) {
-            state.setPendingOutboxId(enqueue.outbox().getId());
+        Long deliveryId;
+        boolean terminalError = false;
+        if (rule.getAction() == RuleAction.WEBHOOK) {
+            deliveryId = outboxService.enqueueAbsence(rule, instance.getStartEvent(), absence)
+                .outbox().getId();
+        } else {
+            var enqueue = notificationOutboxService.enqueue(
+                rule, instance.getStartEvent(), null, null, groupKey, null);
+            deliveryId = enqueue.outbox().getId();
+            terminalError = enqueue.terminalError();
         }
-        if (enqueue.created()) {
+        if (terminalError) {
+            return new ActionDecision(failedOutcome(rule), "TEMPLATE_RENDER_ERROR", deliveryId);
+        }
+        if (state != null) {
+            state.setPendingOutboxId(deliveryId);
+        }
+        if (deliveryId != null) {
             queued.increment();
         }
-        return new ActionDecision(EventRuleActionOutcome.WEBHOOK_QUEUED, null,
-            enqueue.outbox().getId());
+        return new ActionDecision(queuedOutcome(rule), null, deliveryId);
+    }
+
+    private boolean isExternalAction(Rule rule) {
+        return (rule.getAction() == RuleAction.WEBHOOK && rule.getCallbackUrl() != null)
+            || ((rule.getAction() == RuleAction.EMAIL || rule.getAction() == RuleAction.SMS)
+                && rule.getNotificationDestinationId() != null
+                && rule.getNotificationTemplateId() != null);
+    }
+
+    private EventRuleActionOutcome queuedOutcome(Rule rule) {
+        return rule.getAction() == RuleAction.WEBHOOK
+            ? EventRuleActionOutcome.WEBHOOK_QUEUED
+            : rule.getAction() == RuleAction.EMAIL
+                ? EventRuleActionOutcome.EMAIL_QUEUED : EventRuleActionOutcome.SMS_QUEUED;
+    }
+
+    private EventRuleActionOutcome failedOutcome(Rule rule) {
+        return rule.getAction() == RuleAction.EMAIL
+            ? EventRuleActionOutcome.EMAIL_FAILED : EventRuleActionOutcome.SMS_FAILED;
+    }
+
+    private EventRuleActionOutcome suppressedOutcome(Rule rule) {
+        return rule.getAction() == RuleAction.WEBHOOK
+            ? EventRuleActionOutcome.WEBHOOK_SUPPRESSED
+            : rule.getAction() == RuleAction.EMAIL
+                ? EventRuleActionOutcome.EMAIL_SUPPRESSED : EventRuleActionOutcome.SMS_SUPPRESSED;
+    }
+
+    private boolean isQueued(EventRuleActionOutcome outcome) {
+        return outcome == EventRuleActionOutcome.WEBHOOK_QUEUED
+            || outcome == EventRuleActionOutcome.EMAIL_QUEUED
+            || outcome == EventRuleActionOutcome.SMS_QUEUED;
+    }
+
+    private boolean isSuppressed(EventRuleActionOutcome outcome) {
+        return outcome == EventRuleActionOutcome.WEBHOOK_SUPPRESSED
+            || outcome == EventRuleActionOutcome.EMAIL_SUPPRESSED
+            || outcome == EventRuleActionOutcome.SMS_SUPPRESSED;
     }
 
     private String emptyToNull(String value) {

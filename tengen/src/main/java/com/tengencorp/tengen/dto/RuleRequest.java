@@ -3,6 +3,7 @@ package com.tengencorp.tengen.dto;
 import com.tengencorp.tengen.entity.AggregateType;
 import com.tengencorp.tengen.entity.Rule;
 import com.tengencorp.tengen.entity.RuleAction;
+import com.tengencorp.tengen.entity.NotificationRecipientMode;
 import com.tengencorp.tengen.entity.RuleType;
 import com.tengencorp.tengen.entity.TriggerMode;
 import com.tengencorp.tengen.helper.AggregateFieldPath;
@@ -32,6 +33,17 @@ public record RuleRequest(
 
         @Size(max = 500, message = "Callback URL must be at most 500 characters")
         String callbackUrl,
+
+        Long notificationDestinationId,
+
+        Long notificationTemplateId,
+
+        NotificationRecipientMode notificationRecipientMode,
+
+        List<@Size(max = 320, message = "Notification recipient must be at most 320 characters") String> notificationRecipients,
+
+        @Size(max = 200, message = "Notification recipient field must be at most 200 characters")
+        String notificationRecipientField,
 
         @PositiveOrZero(message = "Cooldown must be zero or greater")
         Integer cooldownSeconds,
@@ -81,8 +93,20 @@ public record RuleRequest(
         rule.setRuleType(ruleType);
         rule.setAction(action);
         rule.setCallbackUrl(action == RuleAction.WEBHOOK ? callbackUrl : null);
-        rule.setCooldownSeconds(action == RuleAction.WEBHOOK ? cooldownSeconds : null);
-        rule.setTriggerMode(action == RuleAction.WEBHOOK && triggerMode != null
+        boolean notificationAction = action == RuleAction.EMAIL || action == RuleAction.SMS;
+        rule.setNotificationDestinationId(notificationAction ? notificationDestinationId : null);
+        rule.setNotificationTemplateId(notificationAction ? notificationTemplateId : null);
+        rule.setNotificationRecipientMode(notificationAction
+            ? (notificationRecipientMode != null ? notificationRecipientMode : NotificationRecipientMode.FIXED)
+            : null);
+        rule.setNotificationRecipients(notificationAction && notificationRecipients != null
+            ? List.copyOf(notificationRecipients) : new java.util.ArrayList<>());
+        rule.setNotificationRecipientField(notificationAction
+            && notificationRecipientMode == NotificationRecipientMode.EVENT_FIELD
+            ? notificationRecipientField : null);
+        boolean externalAction = action == RuleAction.WEBHOOK || notificationAction;
+        rule.setCooldownSeconds(externalAction ? cooldownSeconds : null);
+        rule.setTriggerMode(externalAction && triggerMode != null
             ? triggerMode : TriggerMode.EVERY_MATCH);
         rule.setEventType(ruleType == RuleType.SEQUENCE ? null : eventType);
         rule.setSource(ruleType == RuleType.SEQUENCE ? null : source);

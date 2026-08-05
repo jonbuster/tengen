@@ -36,6 +36,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.beans.factory.annotation.Value;
 import tools.jackson.databind.ObjectMapper;
@@ -65,6 +66,7 @@ public class EventService {
     private final RuleEngine ruleEngine;
     private final AbsenceRuleService absenceRuleService;
     private final WebhookOutboxService webhookOutboxService;
+    private final NotificationOutboxService notificationOutboxService;
     private final WebhookCooldownService webhookCooldownService;
     private final ApiKeyService apiKeyService;
     private final EventIdempotencyRepository eventIdempotencyRepository;
@@ -81,10 +83,12 @@ public class EventService {
     private final long maxFutureSkewSeconds;
     private final WarningLogRateLimiter warningLogRateLimiter = new WarningLogRateLimiter();
 
+    @Autowired
     public EventService(EventRepository eventRepository, ApiKeyRepository apiKeyRepository,
                         RuleRepository ruleRepository, RuleEngine ruleEngine,
                         AbsenceRuleService absenceRuleService,
                         WebhookOutboxService webhookOutboxService,
+                        NotificationOutboxService notificationOutboxService,
                         WebhookCooldownService webhookCooldownService, ApiKeyService apiKeyService,
                         EventIdempotencyRepository eventIdempotencyRepository,
                         EventRequestHasher eventRequestHasher, ObjectMapper objectMapper,
@@ -99,6 +103,7 @@ public class EventService {
         this.ruleEngine = ruleEngine;
         this.absenceRuleService = absenceRuleService;
         this.webhookOutboxService = webhookOutboxService;
+        this.notificationOutboxService = notificationOutboxService;
         this.webhookCooldownService = webhookCooldownService;
         this.apiKeyService = apiKeyService;
         this.eventIdempotencyRepository = eventIdempotencyRepository;
@@ -115,6 +120,23 @@ public class EventService {
         this.tooLateEvents = meterRegistry.counter(
             "tengen.ingestion.event_time", "status", "too_late");
         this.maxFutureSkewSeconds = maxFutureSkewSeconds;
+    }
+
+    /** Compatibility constructor used by focused unit tests and older callers. */
+    public EventService(EventRepository eventRepository, ApiKeyRepository apiKeyRepository,
+                        RuleRepository ruleRepository, RuleEngine ruleEngine,
+                        AbsenceRuleService absenceRuleService,
+                        WebhookOutboxService webhookOutboxService,
+                        WebhookCooldownService webhookCooldownService, ApiKeyService apiKeyService,
+                        EventIdempotencyRepository eventIdempotencyRepository,
+                        EventRequestHasher eventRequestHasher, ObjectMapper objectMapper,
+                        MeterRegistry meterRegistry, long maxFutureSkewSeconds,
+                        EventRuleOutcomeRepository eventRuleOutcomeRepository,
+                        EventWatermarkService eventWatermarkService) {
+        this(eventRepository, apiKeyRepository, ruleRepository, ruleEngine, absenceRuleService,
+            webhookOutboxService, null, webhookCooldownService, apiKeyService,
+            eventIdempotencyRepository, eventRequestHasher, objectMapper, meterRegistry,
+            maxFutureSkewSeconds, eventRuleOutcomeRepository, eventWatermarkService);
     }
 
     @Transactional
@@ -330,7 +352,7 @@ public class EventService {
             }
             RuleEvaluation evaluation = ruleEngine.evaluate(event, rule);
             boolean currentMatch = evaluation.matched(rule);
-            if (isEdgeWebhook(rule) && hasTriggerScope(event, rule, evaluation)) {
+            if (isEdgeAction(rule) && hasTriggerScope(event, rule, evaluation)) {
                 if (!currentMatch) {
                     resetEdgeState(rule, evaluation.groupKey());
                 }
@@ -359,12 +381,12 @@ public class EventService {
             }
 
             ActionDecision actionDecision = new ActionDecision(EventRuleActionOutcome.LOG_ONLY, null, null);
-            if (rule.getAction() == RuleAction.WEBHOOK && rule.getCallbackUrl() != null) {
-                actionDecision = enqueueWebhook(
+            if (isConfiguredAction(rule)) {
+                actionDecision = enqueueAction(
                     rule, event, request, aggregateResult, evaluation.sequence(), evaluation.groupKey());
-                if (actionDecision.outcome() == EventRuleActionOutcome.WEBHOOK_QUEUED) {
+                if (isQueuedOutcome(actionDecision.outcome())) {
                     queuedRuleNames.add(rule.getName());
-                } else if (actionDecision.outcome() == EventRuleActionOutcome.WEBHOOK_SUPPRESSED) {
+                } else if (isSuppressedOutcome(actionDecision.outcome())) {
                     suppressedRuleNames.add(rule.getName());
                 }
             }
@@ -480,20 +502,20 @@ public class EventService {
     private record ProcessingResult(Event event, EventResponse response) {
     }
 
-    private ActionDecision enqueueWebhook(Rule rule, Event event, EventRequest request,
+    private ActionDecision enqueueAction(Rule rule, Event event, EventRequest request,
                                           AggregateResult aggregateResult,
                                           SequenceResult sequenceResult,
                                           String groupKey) {
         Instant occurredAt = event.getOccurredAt();
         var state = needsActionState(rule) ? webhookCooldownService.lockState(rule, groupKey) : null;
-        RuleActionWindow windowState = isOncePerWindowWebhook(rule)
+        RuleActionWindow windowState = isOncePerWindowAction(rule)
             ? webhookCooldownService.lockWindow(rule, groupKey, windowStart(occurredAt, rule.getWindowSeconds()))
             : null;
 
-        if (isEdgeWebhook(rule)) {
+        if (isEdgeAction(rule)) {
             if (webhookCooldownService.isEdgeSuppressed(state)) {
                 return new ActionDecision(
-                    EventRuleActionOutcome.WEBHOOK_SUPPRESSED,
+                    suppressedOutcome(rule),
                     "EDGE_ALREADY_MATCHED",
                     null);
             }
@@ -503,7 +525,7 @@ public class EventService {
             && (webhookCooldownService.isWindowDelivered(windowState)
                 || windowState.getPendingOutboxId() != null)) {
             return new ActionDecision(
-                EventRuleActionOutcome.WEBHOOK_SUPPRESSED,
+                suppressedOutcome(rule),
                 "WINDOW_ALREADY_RESERVED_OR_DELIVERED",
                 null);
         }
@@ -514,28 +536,48 @@ public class EventService {
             if (state.getPendingOutboxId() != null
                 || webhookCooldownService.isSuppressed(state, rule.getCooldownSeconds(), now)) {
                 return new ActionDecision(
-                    EventRuleActionOutcome.WEBHOOK_SUPPRESSED,
+                    suppressedOutcome(rule),
                     "COOLDOWN_ACTIVE_OR_RESERVED",
                     null);
             }
         }
 
-        var enqueueResult = webhookOutboxService.enqueue(
-            rule,
-            event,
-            request,
-            aggregateResult,
-            sequenceResult,
-            groupKey,
-            windowState != null ? windowState.getWindowStart() : null);
-        Long outboxId = enqueueResult.outbox().getId();
+        Long outboxId;
+        boolean terminalError = false;
+        if (rule.getAction() == RuleAction.WEBHOOK) {
+            var enqueueResult = webhookOutboxService.enqueue(
+                rule,
+                event,
+                request,
+                aggregateResult,
+                sequenceResult,
+                groupKey,
+                windowState != null ? windowState.getWindowStart() : null);
+            outboxId = enqueueResult.outbox().getId();
+        } else if (notificationOutboxService != null) {
+            var enqueueResult = notificationOutboxService.enqueue(
+                rule,
+                event,
+                aggregateResult,
+                sequenceResult,
+                groupKey,
+                windowState != null ? windowState.getWindowStart() : null);
+            outboxId = enqueueResult.outbox().getId();
+            terminalError = enqueueResult.terminalError();
+        } else {
+            return new ActionDecision(failedOutcome(rule), "NOTIFICATION_SERVICE_UNAVAILABLE", null);
+        }
+
+        if (terminalError) {
+            return new ActionDecision(failedOutcome(rule), "TEMPLATE_RENDER_ERROR", outboxId);
+        }
 
         if (state != null) {
             if ((rule.getCooldownSeconds() != null && rule.getCooldownSeconds() > 0)
-                || isEdgeWebhook(rule)) {
+                || isEdgeAction(rule)) {
                 state.setPendingOutboxId(outboxId);
             }
-            if (isEdgeWebhook(rule)) {
+            if (isEdgeAction(rule)) {
                 // Reserve the rising edge when queued; delivery success is handled by the worker.
                 state.setLastMatched(true);
             }
@@ -544,18 +586,16 @@ public class EventService {
             windowState.setPendingOutboxId(outboxId);
         }
 
-        return new ActionDecision(EventRuleActionOutcome.WEBHOOK_QUEUED, null, outboxId);
+        return new ActionDecision(queuedOutcome(rule), null, outboxId);
     }
 
-    private boolean isEdgeWebhook(Rule rule) {
-        return rule.getAction() == RuleAction.WEBHOOK
-            && rule.getCallbackUrl() != null
+    private boolean isEdgeAction(Rule rule) {
+        return isConfiguredAction(rule)
             && rule.getEffectiveTriggerMode() == TriggerMode.EDGE;
     }
 
-    private boolean isOncePerWindowWebhook(Rule rule) {
-        return rule.getAction() == RuleAction.WEBHOOK
-            && rule.getCallbackUrl() != null
+    private boolean isOncePerWindowAction(Rule rule) {
+        return isConfiguredAction(rule)
             && rule.getEffectiveTriggerMode() == TriggerMode.ONCE_PER_WINDOW
             && rule.getRuleType() == RuleType.AGGREGATE
             && rule.getWindowSeconds() != null
@@ -563,9 +603,46 @@ public class EventService {
     }
 
     private boolean needsActionState(Rule rule) {
+        return isConfiguredAction(rule)
+            && (isEdgeAction(rule) || (rule.getCooldownSeconds() != null && rule.getCooldownSeconds() > 0));
+    }
+
+    private boolean isConfiguredAction(Rule rule) {
+        return (rule.getAction() == RuleAction.WEBHOOK && rule.getCallbackUrl() != null)
+            || ((rule.getAction() == RuleAction.EMAIL || rule.getAction() == RuleAction.SMS)
+                && rule.getNotificationDestinationId() != null
+                && rule.getNotificationTemplateId() != null);
+    }
+
+    private EventRuleActionOutcome queuedOutcome(Rule rule) {
         return rule.getAction() == RuleAction.WEBHOOK
-            && rule.getCallbackUrl() != null
-            && (isEdgeWebhook(rule) || (rule.getCooldownSeconds() != null && rule.getCooldownSeconds() > 0));
+            ? EventRuleActionOutcome.WEBHOOK_QUEUED
+            : rule.getAction() == RuleAction.EMAIL
+                ? EventRuleActionOutcome.EMAIL_QUEUED : EventRuleActionOutcome.SMS_QUEUED;
+    }
+
+    private EventRuleActionOutcome suppressedOutcome(Rule rule) {
+        return rule.getAction() == RuleAction.WEBHOOK
+            ? EventRuleActionOutcome.WEBHOOK_SUPPRESSED
+            : rule.getAction() == RuleAction.EMAIL
+                ? EventRuleActionOutcome.EMAIL_SUPPRESSED : EventRuleActionOutcome.SMS_SUPPRESSED;
+    }
+
+    private EventRuleActionOutcome failedOutcome(Rule rule) {
+        return rule.getAction() == RuleAction.EMAIL
+            ? EventRuleActionOutcome.EMAIL_FAILED : EventRuleActionOutcome.SMS_FAILED;
+    }
+
+    private boolean isQueuedOutcome(EventRuleActionOutcome outcome) {
+        return outcome == EventRuleActionOutcome.WEBHOOK_QUEUED
+            || outcome == EventRuleActionOutcome.EMAIL_QUEUED
+            || outcome == EventRuleActionOutcome.SMS_QUEUED;
+    }
+
+    private boolean isSuppressedOutcome(EventRuleActionOutcome outcome) {
+        return outcome == EventRuleActionOutcome.WEBHOOK_SUPPRESSED
+            || outcome == EventRuleActionOutcome.EMAIL_SUPPRESSED
+            || outcome == EventRuleActionOutcome.SMS_SUPPRESSED;
     }
 
     private Instant windowStart(Instant occurredAt, Integer windowSeconds) {

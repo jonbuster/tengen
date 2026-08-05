@@ -73,6 +73,13 @@ public class RetentionService {
                     WHERE status IN ('DELIVERED', 'DEAD_LETTER') AND created_at < ? LIMIT ?
                 )
                 """, cutoff));
+            deleted.put("notification_outbox", drain("""
+                DELETE FROM notification_outbox WHERE id IN (
+                    SELECT id FROM notification_outbox
+                    WHERE status IN ('SUBMITTED', 'DELIVERED', 'DEAD_LETTER', 'TEMPLATE_RENDER_ERROR')
+                      AND created_at < ? LIMIT ?
+                )
+                """, cutoff));
             deleted.put("replay_jobs", drain("""
                 DELETE FROM replay_jobs WHERE id IN (
                     SELECT id FROM replay_jobs
@@ -131,6 +138,7 @@ public class RetentionService {
                             AND absence_instance.status = 'PENDING'
                       )
                       AND NOT EXISTS (SELECT 1 FROM webhook_outbox outbox WHERE outbox.event_id = event.id)
+                      AND NOT EXISTS (SELECT 1 FROM notification_outbox outbox WHERE outbox.event_id = event.id)
                       AND NOT EXISTS (SELECT 1 FROM event_idempotency idem WHERE idem.event_id = event.id)
                     LIMIT ?
                 )

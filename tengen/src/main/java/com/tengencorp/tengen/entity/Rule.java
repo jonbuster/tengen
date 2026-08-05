@@ -18,6 +18,8 @@ import jakarta.persistence.OrderBy;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -47,6 +49,25 @@ public class Rule {
 
     @Column(name = "callback_url", columnDefinition = "text")
     private String callbackUrl;
+
+    /** Reusable email/SMS provider connection selected by a notification rule. */
+    @Column(name = "notification_destination_id")
+    private Long notificationDestinationId;
+
+    /** Immutable template version selected by a notification rule. */
+    @Column(name = "notification_template_id")
+    private Long notificationTemplateId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "notification_recipient_mode", length = 20)
+    private NotificationRecipientMode notificationRecipientMode;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "notification_recipients", columnDefinition = "jsonb")
+    private List<String> notificationRecipients = new ArrayList<>();
+
+    @Column(name = "notification_recipient_field", length = 200)
+    private String notificationRecipientField;
 
     @Column(name = "cooldown_seconds")
     private Integer cooldownSeconds;

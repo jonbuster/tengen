@@ -21,6 +21,7 @@ import EventNoteIcon from "@mui/icons-material/EventNote";
 import ReplayIcon from "@mui/icons-material/Replay";
 import SettingsIcon from "@mui/icons-material/Settings";
 import CableIcon from "@mui/icons-material/Cable";
+import NotificationsIcon from "@mui/icons-material/Notifications";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
@@ -35,6 +36,7 @@ const NAV_ITEMS = [
   { href: "/deliveries", label: "Deliveries", icon: <HistoryIcon /> },
   { href: "/replays", label: "Replays", icon: <ReplayIcon /> },
   { href: "/connectors/rabbitmq", label: "Connectors", icon: <CableIcon /> },
+  { href: "/notifications", label: "Notifications", icon: <NotificationsIcon /> },
   { href: "/keys", label: "API Keys", icon: <KeyIcon /> },
   { href: "/settings", label: "Settings", icon: <SettingsIcon /> },
 ];

@@ -8,8 +8,16 @@ import com.tengencorp.tengen.entity.RuleType;
 import com.tengencorp.tengen.entity.TriggerMode;
 import com.tengencorp.tengen.entity.RuleValidationStatus;
 import com.tengencorp.tengen.entity.RuleSequenceStep;
+import com.tengencorp.tengen.entity.NotificationChannel;
+import com.tengencorp.tengen.entity.NotificationRecipientMode;
+import com.tengencorp.tengen.repository.NotificationDestinationRepository;
+import com.tengencorp.tengen.repository.NotificationTemplateRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.regex.Pattern;
 
 /** Central validation for every path that can make a rule executable. */
 @Service
@@ -17,15 +25,29 @@ public class RuleValidationService {
 
     private final AviatorEvaluatorInstance aviator;
     private final WebhookDestinationValidator destinationValidator;
+    private final NotificationDestinationRepository notificationDestinationRepository;
+    private final NotificationTemplateRepository notificationTemplateRepository;
     private final int maxExpressionLength;
 
+    @Autowired
     public RuleValidationService(AviatorEvaluatorInstance aviator,
                                  WebhookDestinationValidator destinationValidator,
+                                 NotificationDestinationRepository notificationDestinationRepository,
+                                 NotificationTemplateRepository notificationTemplateRepository,
                                  @Value("${tengen.rules.max-expression-length:10000}")
                                  int maxExpressionLength) {
         this.aviator = aviator;
         this.destinationValidator = destinationValidator;
+        this.notificationDestinationRepository = notificationDestinationRepository;
+        this.notificationTemplateRepository = notificationTemplateRepository;
         this.maxExpressionLength = maxExpressionLength;
+    }
+
+    /** Compatibility constructor used by focused unit tests and older callers. */
+    public RuleValidationService(AviatorEvaluatorInstance aviator,
+                                 WebhookDestinationValidator destinationValidator,
+                                 int maxExpressionLength) {
+        this(aviator, destinationValidator, null, null, maxExpressionLength);
     }
 
     public void validateAndMark(Rule rule) {
@@ -83,6 +105,13 @@ public class RuleValidationService {
 
         if (rule.getAction() == RuleAction.WEBHOOK) {
             destinationValidator.validateSyntax(rule.getCallbackUrl());
+        } else if (rule.getAction() == RuleAction.EMAIL || rule.getAction() == RuleAction.SMS) {
+            validateNotification(rule);
+        }
+
+        if (rule.getAction() == RuleAction.WEBHOOK
+                || rule.getAction() == RuleAction.EMAIL
+                || rule.getAction() == RuleAction.SMS) {
             require(rule.getCooldownSeconds() == null || rule.getCooldownSeconds() >= 0,
                 "Cooldown must be zero or greater");
             if (rule.getEffectiveTriggerMode() == TriggerMode.ONCE_PER_WINDOW) {
@@ -91,8 +120,54 @@ public class RuleValidationService {
             }
             if (rule.getRuleType() == RuleType.ABSENCE) {
                 require(rule.getEffectiveTriggerMode() == TriggerMode.EVERY_MATCH,
-                    "Absence webhook rules must use EVERY_MATCH trigger mode");
+                    "Absence notification rules must use EVERY_MATCH trigger mode");
             }
+        }
+    }
+
+    private void validateNotification(Rule rule) {
+        NotificationChannel channel = rule.getAction() == RuleAction.EMAIL
+            ? NotificationChannel.EMAIL : NotificationChannel.SMS;
+        require(rule.getNotificationDestinationId() != null,
+            "Notification destination is required");
+        require(rule.getNotificationTemplateId() != null,
+            "Notification template is required");
+        if (notificationDestinationRepository != null) {
+            var destination = notificationDestinationRepository.findById(rule.getNotificationDestinationId())
+                .orElseThrow(() -> new IllegalArgumentException("Notification destination was not found"));
+            require(destination.isEnabled(), "Notification destination must be enabled");
+            require(destination.getChannel() == channel,
+                "Notification destination channel must match the action");
+        }
+        if (notificationTemplateRepository != null) {
+            var template = notificationTemplateRepository.findById(rule.getNotificationTemplateId())
+                .orElseThrow(() -> new IllegalArgumentException("Notification template was not found"));
+            require(template.isActive(), "Notification template must be active");
+            require(template.getChannel() == channel,
+                "Notification template channel must match the action");
+        }
+        NotificationRecipientMode mode = rule.getNotificationRecipientMode() != null
+            ? rule.getNotificationRecipientMode() : NotificationRecipientMode.FIXED;
+        if (mode == NotificationRecipientMode.EVENT_FIELD) {
+            require(rule.getNotificationRecipientField() != null
+                    && rule.getNotificationRecipientField().matches("(?:data\\.)?[A-Za-z][A-Za-z0-9_.-]*"),
+                "Notification recipient field must be a data field path");
+            return;
+        }
+        List<String> recipients = rule.getNotificationRecipients();
+        require(recipients != null && !recipients.isEmpty(),
+            "At least one notification recipient is required");
+        Pattern pattern = channel == NotificationChannel.EMAIL
+            ? Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
+            : Pattern.compile("^\\+[1-9]\\d{7,14}$");
+        for (String recipient : recipients) {
+            require(recipient != null && pattern.matcher(recipient.trim()).matches(),
+                channel == NotificationChannel.EMAIL
+                    ? "Invalid email notification recipient"
+                    : "SMS notification recipients must use E.164 format");
+        }
+        if (channel == NotificationChannel.SMS) {
+            require(recipients.size() == 1, "SMS rules support one recipient per notification");
         }
     }
 

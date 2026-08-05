@@ -4,7 +4,7 @@
 
 # Tengen
 
-Tengen is a complex event processing web app for ingesting business events, evaluating configurable rules, and triggering automated webhook actions.
+Tengen is a complex event processing web app for ingesting business events, evaluating configurable rules, and triggering automated webhook, email, and SMS actions.
 
 - **Payment fraud detection** — Flag unusually large payments or repeated payment failures and notify a fraud service.
 - **Login security monitoring** — Detect multiple failed login attempts for the same user, account, or device within a time window.
@@ -65,6 +65,7 @@ Local admin credentials: `admin` / `admin`
 - **Grouping** — Maintain independent rule state per user, account, device, or another business key.
 - **Trigger controls** — Configure every-match, rising-edge, once-per-window, and cooldown behavior.
 - **Webhook actions** — Deliver actions asynchronously with retries, dead-letter handling, delivery history, and request signing.
+- **Email and SMS actions** — Configure encrypted SMTP/Amazon SES SMTP or Twilio destinations, versioned templates, `{{data.field}}` rendering, and asynchronous delivery with retries.
 - **Rule management and testing** — Create, edit, enable, archive, version, restore, and test rules from the admin console.
 - **API key management** — Create scoped ingestion keys and safely retry events with idempotency protection.
 - **Event Explorer** — Search accepted events, inspect payloads, and trace rule matches and webhook actions.
@@ -94,8 +95,11 @@ SPRING_PROFILES_ACTIVE=prod
 ADMIN_PASSWORD=replace-with-a-strong-password
 JWT_SECRET=replace-with-a-random-secret
 WEBHOOK_SIGNING_SECRET=replace-with-a-random-secret
+TENGEN_CONNECTOR_MASTER_KEY=base64-encoded-random-32-byte-key
 CORS_ALLOWED_ORIGINS=https://your-domain.example
 ```
+
+`TENGEN_CONNECTOR_MASTER_KEY` is required before an administrator can save an email or SMS provider connection. Amazon SES is currently configured through its SMTP endpoint; SMS currently uses Twilio.
 
 Build and start the production stack:
 
