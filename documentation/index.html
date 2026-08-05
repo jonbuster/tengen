@@ -899,6 +899,56 @@ expected = "v1=" + signature</code></pre></div>
               <p>Use environment variables for deployment behavior. The defaults below match the included local Compose setup.</p>
             </div>
 
+            <h3>Sample .env files</h3>
+            <p>Save one of these examples as <code>.env</code> in the repository root before running Docker Compose. The values below are examples; do not commit real credentials or production secrets.</p>
+            <div class="content-grid two-up align-start">
+              <div>
+                <h4>Local development</h4>
+                <div class="code-wrap"><pre><code># .env - local Docker Compose
+SPRING_PROFILES_ACTIVE=
+ADMIN_USER=admin
+ADMIN_PASSWORD=admin
+JWT_SECRET=dev-secret-change-me-please-32-bytes-min
+WEBHOOK_SIGNING_SECRET=dev-webhook-signing-secret-change-me
+CORS_ALLOWED_ORIGINS=http://localhost:3000
+WEBHOOK_WORKER_ENABLED=true
+TENGEN_ABSENCE_WORKER_ENABLED=true
+TENGEN_REPLAY_WORKER_ENABLED=true
+DB_PORT=5432
+APP_PORT=8080
+FRONTEND_PORT=3000
+RABBITMQ_AMQP_PORT=5672
+RABBITMQ_MANAGEMENT_PORT=15672
+RABBITMQ_DEFAULT_USER=tengen
+RABBITMQ_DEFAULT_PASS=tengen
+
+# Optional: required before saving a RabbitMQ connector
+# TENGEN_CONNECTOR_MASTER_KEY=base64-encoded-random-32-byte-key</code></pre></div>
+              </div>
+              <div>
+                <h4>Production</h4>
+                <div class="code-wrap"><pre><code># .env - production
+SPRING_PROFILES_ACTIVE=prod
+ADMIN_USER=admin
+ADMIN_PASSWORD=replace-with-a-strong-password
+JWT_SECRET=replace-with-a-random-secret-at-least-32-bytes
+WEBHOOK_SIGNING_SECRET=replace-with-another-random-secret-at-least-32-bytes
+CORS_ALLOWED_ORIGINS=https://console.example.com
+WEBHOOK_WORKER_ENABLED=true
+TENGEN_ABSENCE_WORKER_ENABLED=true
+TENGEN_REPLAY_WORKER_ENABLED=true
+RETENTION_ENABLED=true
+RETENTION_DAYS=90
+TENGEN_CONNECTOR_MASTER_KEY=replace-with-base64-encoded-random-32-byte-key
+TENGEN_RABBITMQ_ALLOWED_HOSTS=rabbitmq.internal.example
+DB_PORT=5432
+APP_PORT=8080
+FRONTEND_PORT=3000</code></pre></div>
+              </div>
+            </div>
+            <div class="notice notice-info"><span class="notice-icon">i</span><div>These examples target the included Docker Compose file. Its app service uses the internal <code>db:5432</code> hostname and Compose database credentials. When running Spring Boot outside Compose or using an external database, set <code>DB_URL</code>, <code>DB_USER</code>, and <code>DB_PASSWORD</code> in that process environment and update the deployment configuration accordingly.</div></div>
+            <div class="notice notice-warning"><span class="notice-icon">!</span><div>Production startup rejects the development admin password and development JWT/webhook secrets. Generate unique values, keep <code>.env</code> outside version control, and provide an exact <code>TENGEN_RABBITMQ_ALLOWED_HOSTS</code> value when RabbitMQ is enabled.</div></div>
+
             <details class="config-group" open>
               <summary>Core application and security</summary>
               <div class="table-wrap"><table>
