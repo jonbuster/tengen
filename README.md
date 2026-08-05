@@ -12,6 +12,8 @@ Tengen is a complex event processing web app for ingesting business events, eval
 - **Missing-event detection** — Identify when an expected event, such as a payment confirmation or delivery update, does not arrive before a deadline.
 - **Operational alerts** — Monitor business activity and send webhook notifications when important thresholds or patterns are reached.
 
+For the full guide, see the [Tengen documentation](https://tengen-gate.netlify.app/).
+
 ## Quick Start
 
 Requirements: Docker, Java 21, Node.js, and npm.
